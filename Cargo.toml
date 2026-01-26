@@ -6,5 +6,10 @@ edition = "2024"
 [dependencies]
 anyhow = "1.0.100"
 clap = { version = "4.5.54", features = ["derive"] }
+image = "0.25"
+imageproc = "0.25"
+ab_glyph = "0.2"
+v4l = "0.14"
+ffmpeg-next = "7.1"
 
 rknpu = { path = "../rknpu-rs/rknpu" }
