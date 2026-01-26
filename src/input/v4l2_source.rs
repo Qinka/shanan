@@ -10,6 +10,7 @@
 
 use anyhow::{Context, Result};
 use image::RgbImage;
+use std::pin::Pin;
 use std::time::Instant;
 use v4l::FourCC;
 use v4l::buffer::Type;
@@ -21,12 +22,14 @@ use v4l::video::Capture;
 use super::{Frame, InputSource, InputSourceType};
 
 /// V4L2 摄像头输入源
+///
+/// 由于 v4l 库的 Stream 需要引用 Device，我们使用 Box<Device> 来保证
+/// Device 的内存地址稳定，从而可以安全地创建引用它的 Stream。
 pub struct V4l2Source {
-  /// V4L2 设备（保留所有权以保持设备打开）
-  #[allow(dead_code)]
-  device: Device,
-  /// 捕获流
-  stream: Stream<'static>,
+  /// V4L2 设备（使用 Pin<Box> 固定内存位置）
+  device: Pin<Box<Device>>,
+  /// 捕获流（生命周期与 device 关联）
+  stream: Option<Stream<'static>>,
   /// 帧索引
   frame_index: u64,
   /// 视频宽度
@@ -40,8 +43,9 @@ pub struct V4l2Source {
 impl V4l2Source {
   /// 创建一个新的 V4L2 摄像头输入源
   pub fn new(device_path: &str) -> Result<Self> {
-    let device =
-      Device::with_path(device_path).with_context(|| format!("无法打开设备: {}", device_path))?;
+    let device = Box::pin(
+      Device::with_path(device_path).with_context(|| format!("无法打开设备: {}", device_path))?,
+    );
 
     // 设置视频格式
     let mut format = device.format()?;
@@ -53,21 +57,31 @@ impl V4l2Source {
     let width = format.width;
     let height = format.height;
 
-    // 创建捕获流
-    // 使用 unsafe 将设备的生命周期延长
-    let device_ptr = &device as *const Device;
-    let stream = unsafe {
-      Stream::with_buffers(&*device_ptr, Type::VideoCapture, 4).context("无法创建捕获流")?
-    };
-
-    Ok(Self {
+    let mut source = Self {
       device,
-      stream: unsafe { std::mem::transmute(stream) },
+      stream: None,
       frame_index: 0,
       width,
       height,
       start_time: Instant::now(),
-    })
+    };
+
+    // 创建捕获流
+    // SAFETY: device 被 Pin<Box> 固定，不会移动，所以引用始终有效
+    // Stream 的生命周期通过 source 的 Drop 来管理
+    let device_ref: &Device = &source.device;
+    let stream = unsafe {
+      // 将设备引用的生命周期延长到 'static
+      // 这是安全的，因为:
+      // 1. device 被 Pin<Box> 固定在堆上，不会移动
+      // 2. stream 存储在同一个结构体中，会在 device 之前被 drop
+      // 3. Drop 顺序：stream (Option::take) -> device
+      let device_static: &'static Device = std::mem::transmute(device_ref);
+      Stream::with_buffers(device_static, Type::VideoCapture, 4).context("无法创建捕获流")?
+    };
+
+    source.stream = Some(stream);
+    Ok(source)
   }
 
   /// 将 YUYV 格式转换为 RGB
@@ -101,11 +115,20 @@ impl V4l2Source {
   }
 }
 
+impl Drop for V4l2Source {
+  fn drop(&mut self) {
+    // 确保 stream 在 device 之前被 drop
+    self.stream.take();
+  }
+}
+
 impl Iterator for V4l2Source {
   type Item = Result<Frame>;
 
   fn next(&mut self) -> Option<Self::Item> {
-    match self.stream.next() {
+    let stream = self.stream.as_mut()?;
+
+    match stream.next() {
       Ok((buffer, _meta)) => {
         let rgb_data = Self::yuyv_to_rgb(buffer, self.width, self.height);
 

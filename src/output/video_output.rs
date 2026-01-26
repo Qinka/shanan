@@ -31,8 +31,10 @@ pub struct VideoOutput {
   width: u32,
   /// 视频高度
   height: u32,
-  /// 帧率
-  fps: f64,
+  /// 帧率分子
+  fps_num: i32,
+  /// 帧率分母
+  fps_den: i32,
   /// 帧索引
   frame_index: u64,
   /// 可视化工具
@@ -62,11 +64,14 @@ impl VideoOutput {
     let context_encoder = ffmpeg::codec::context::Context::new_with_codec(codec);
     let mut encoder = context_encoder.encoder().video()?;
 
+    // 将浮点帧率转换为有理数表示，支持如 29.97 fps 等非整数帧率
+    let (fps_num, fps_den) = Self::fps_to_rational(fps);
+
     encoder.set_width(width);
     encoder.set_height(height);
     encoder.set_format(Pixel::YUV420P);
-    encoder.set_frame_rate(Some(Rational::new(fps as i32, 1)));
-    encoder.set_time_base(Rational::new(1, fps as i32));
+    encoder.set_frame_rate(Some(Rational::new(fps_num, fps_den)));
+    encoder.set_time_base(Rational::new(fps_den, fps_num));
 
     let encoder = encoder.open()?;
     stream.set_parameters(&encoder);
@@ -93,12 +98,45 @@ impl VideoOutput {
       scaler,
       width,
       height,
-      fps,
+      fps_num,
+      fps_den,
       frame_index: 0,
       visualizer: Visualizer::new(),
       stream_index,
       time_base,
     })
+  }
+
+  /// 将浮点帧率转换为有理数表示
+  fn fps_to_rational(fps: f64) -> (i32, i32) {
+    // 常见帧率的精确表示
+    const COMMON_RATES: &[(f64, i32, i32)] = &[
+      (23.976, 24000, 1001),
+      (24.0, 24, 1),
+      (25.0, 25, 1),
+      (29.97, 30000, 1001),
+      (30.0, 30, 1),
+      (50.0, 50, 1),
+      (59.94, 60000, 1001),
+      (60.0, 60, 1),
+    ];
+
+    // 检查是否匹配常见帧率
+    for &(rate, num, den) in COMMON_RATES {
+      if (fps - rate).abs() < 0.01 {
+        return (num, den);
+      }
+    }
+
+    // 对于非常见帧率，使用高精度近似
+    if (fps - fps.round()).abs() < 0.001 {
+      // 接近整数帧率
+      (fps.round() as i32, 1)
+    } else {
+      // 使用 1001 作为分母的近似
+      let num = (fps * 1001.0).round() as i32;
+      (num, 1001)
+    }
   }
 
   /// 编码并写入帧
@@ -112,7 +150,7 @@ impl VideoOutput {
     let mut packet = ffmpeg::Packet::empty();
     while self.encoder.receive_packet(&mut packet).is_ok() {
       packet.set_stream(self.stream_index);
-      packet.rescale_ts(Rational::new(1, self.fps as i32), self.time_base);
+      packet.rescale_ts(Rational::new(self.fps_den, self.fps_num), self.time_base);
       packet.write_interleaved(&mut self.output_context)?;
     }
 
