@@ -194,36 +194,66 @@ impl Model for Yolo26 {
       YOLO26_HEAD_SIZES.iter().zip(YOLO26_STRIDES).enumerate()
     {
       let spatial = map_h * map_w;
-
-      let reg = match output.get_f32(head_idx * 2) {
-        Ok(data) => data,
-        Err(e) => {
-          error!("获取第 {} 个回归输出失败: {}", head_idx, e);
-          continue;
-        }
-      };
-
-      let cls = match output.get_f32(head_idx * 2 + 1) {
-        Ok(data) => data,
-        Err(e) => {
-          error!("获取第 {} 个分类输出失败: {}", head_idx, e);
-          continue;
-        }
-      };
-
       let reg_expected = 4 * spatial;
       let cls_expected = YOLO26_CLASS_NUM * spatial;
 
-      if reg.len() < reg_expected || cls.len() < cls_expected {
+      // 获取该检测头的两个输出张量
+      // 由于RKNN输出顺序可能不同，需要根据张量大小来判断哪个是回归，哪个是分类
+      let output_idx1 = head_idx * 2;
+      let output_idx2 = head_idx * 2 + 1;
+
+      let tensor1 = match output.get_f32(output_idx1) {
+        Ok(data) => data,
+        Err(e) => {
+          error!("获取第 {} 个输出失败: {}", output_idx1, e);
+          continue;
+        }
+      };
+
+      let tensor2 = match output.get_f32(output_idx2) {
+        Ok(data) => data,
+        Err(e) => {
+          error!("获取第 {} 个输出失败: {}", output_idx2, e);
+          continue;
+        }
+      };
+
+      debug!(
+        "检测头 {}: 张量1大小={}, 张量2大小={}, 空间大小={}x{}={}, 期望回归={}, 期望分类={}",
+        head_idx,
+        tensor1.len(),
+        tensor2.len(),
+        map_h,
+        map_w,
+        spatial,
+        reg_expected,
+        cls_expected
+      );
+
+      // 根据张量大小判断哪个是回归输出，哪个是分类输出
+      let (reg, cls) = if tensor1.len() == reg_expected && tensor2.len() == cls_expected {
+        debug!(
+          "检测头 {}: 输出顺序正常 - 索引 {} 是回归，索引 {} 是分类",
+          head_idx, output_idx1, output_idx2
+        );
+        (tensor1, tensor2)
+      } else if tensor1.len() == cls_expected && tensor2.len() == reg_expected {
+        debug!(
+          "检测头 {}: 输出顺序交换 - 索引 {} 是分类，索引 {} 是回归",
+          head_idx, output_idx1, output_idx2
+        );
+        (tensor2, tensor1)
+      } else {
         error!(
-          "输出大小不匹配: 回归 {} 期望至少 {}, 分类 {} 期望至少 {}",
-          reg.len(),
+          "检测头 {}: 输出大小不匹配 - 张量1: {}, 张量2: {}, 期望回归: {}, 期望分类: {}",
+          head_idx,
+          tensor1.len(),
+          tensor2.len(),
           reg_expected,
-          cls.len(),
           cls_expected
         );
         continue;
-      }
+      };
 
       for h in 0..map_h {
         for w in 0..map_w {
