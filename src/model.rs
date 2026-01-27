@@ -1,5 +1,5 @@
 // 该文件是 Shanan （山南西风） 项目的一部分。
-// src/main.rs - 项目主程序
+// src/model.rs - 模型
 //
 // 本程序遵循 GNU Affero 通用公共许可证（AGPL）许可协议。
 // 本程序的发布旨在提供实用价值，但不作任何形式的担保，
@@ -8,16 +8,8 @@
 //
 // Copyright (C) 2026 Johann Li <me@qinka.pro>, ETVP
 
-mod args;
+mod core;
+pub use self::core::{DetectItem, DetectResult, Model};
 
-use anyhow::Result;
-use clap::Parser;
-
-fn main() -> Result<()> {
-  let args = args::Args::parse();
-
-  println!("模型文件路径: {}", args.model);
-  println!("输入来源: {}", args.input);
-
-  Ok(())
-}
+mod yolo26;
+pub use self::yolo26::{Yolo26, Yolo26Builder};

@@ -1,5 +1,5 @@
 // 该文件是 Shanan （山南西风） 项目的一部分。
-// src/args.rs - 项目参数配置
+// src/output.rs - 输出定义
 //
 // 本程序遵循 GNU Affero 通用公共许可证（AGPL）许可协议。
 // 本程序的发布旨在提供实用价值，但不作任何形式的担保，
@@ -8,16 +8,8 @@
 //
 // Copyright (C) 2026 Johann Li <me@qinka.pro>, ETVP
 
-use clap::Parser;
+mod core;
+pub use self::core::Render;
 
-/// Shanan 项目参数配置
-#[derive(Parser, Debug)]
-#[command(author, version, about, long_about = None)]
-pub struct Args {
-  /// RKNN 模型文件路径
-  #[arg(long, value_name = "FILE")]
-  pub model: String,
-  /// 输入来源
-  #[arg(long, value_name = "SOURCE")]
-  pub input: String,
-}
+mod save_image_file;
+pub use self::save_image_file::{SaveImageFileError, SaveImageFileOutput};
