@@ -157,6 +157,42 @@ impl Yolo26Builder {
   }
 }
 
+/// 根据张量大小匹配回归和分类输出
+/// 返回 (reg, cls) 元组，如果大小不匹配则返回 None
+fn match_reg_cls_tensors<'a>(
+  tensor1: &'a [f32],
+  tensor2: &'a [f32],
+  reg_expected: usize,
+  cls_expected: usize,
+  head_idx: usize,
+  output_idx1: usize,
+  output_idx2: usize,
+) -> Option<(&'a [f32], &'a [f32])> {
+  if tensor1.len() == reg_expected && tensor2.len() == cls_expected {
+    debug!(
+      "检测头 {}: 输出顺序正常 - 索引 {} 是回归，索引 {} 是分类",
+      head_idx, output_idx1, output_idx2
+    );
+    Some((tensor1, tensor2))
+  } else if tensor1.len() == cls_expected && tensor2.len() == reg_expected {
+    debug!(
+      "检测头 {}: 输出顺序交换 - 索引 {} 是分类，索引 {} 是回归",
+      head_idx, output_idx1, output_idx2
+    );
+    Some((tensor2, tensor1))
+  } else {
+    error!(
+      "检测头 {}: 输出大小不匹配 - 张量1: {}, 张量2: {}, 期望回归: {}, 期望分类: {}",
+      head_idx,
+      tensor1.len(),
+      tensor2.len(),
+      reg_expected,
+      cls_expected
+    );
+    None
+  }
+}
+
 impl Model for Yolo26 {
   type Input = RgbNchwFrame; // 输入为 NCHW 格式的字节数组
   type Output = DetectResult; // 输出为浮点数组
@@ -231,28 +267,17 @@ impl Model for Yolo26 {
       );
 
       // 根据张量大小判断哪个是回归输出，哪个是分类输出
-      let (reg, cls) = if tensor1.len() == reg_expected && tensor2.len() == cls_expected {
-        debug!(
-          "检测头 {}: 输出顺序正常 - 索引 {} 是回归，索引 {} 是分类",
-          head_idx, output_idx1, output_idx2
-        );
-        (tensor1, tensor2)
-      } else if tensor1.len() == cls_expected && tensor2.len() == reg_expected {
-        debug!(
-          "检测头 {}: 输出顺序交换 - 索引 {} 是分类，索引 {} 是回归",
-          head_idx, output_idx1, output_idx2
-        );
-        (tensor2, tensor1)
-      } else {
-        error!(
-          "检测头 {}: 输出大小不匹配 - 张量1: {}, 张量2: {}, 期望回归: {}, 期望分类: {}",
-          head_idx,
-          tensor1.len(),
-          tensor2.len(),
-          reg_expected,
-          cls_expected
-        );
-        continue;
+      let (reg, cls) = match match_reg_cls_tensors(
+        tensor1,
+        tensor2,
+        reg_expected,
+        cls_expected,
+        head_idx,
+        output_idx1,
+        output_idx2,
+      ) {
+        Some(tensors) => tensors,
+        None => continue,
       };
 
       for h in 0..map_h {
