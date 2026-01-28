@@ -13,3 +13,6 @@ pub use self::core::Render;
 
 mod save_image_file;
 pub use self::save_image_file::{SaveImageFileError, SaveImageFileOutput};
+
+mod save_video_file;
+pub use self::save_video_file::{SaveVideoFileError, SaveVideoFileOutput};

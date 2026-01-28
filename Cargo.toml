@@ -29,8 +29,9 @@ thiserror = "2.0.18"
 
 [features]
 
-default = ["read_image_file", "save_image_file"]
+default = ["read_image_file", "save_image_file", "save_video_file"]
 
 read_image_file = ["image"]
 model_yolo26 = []
 save_image_file = ["image", "imageproc", "ab_glyph"]
+save_video_file = ["image", "imageproc", "ab_glyph"]
