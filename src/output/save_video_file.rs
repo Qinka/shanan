@@ -263,13 +263,19 @@ pub enum SaveVideoFileError {
   #[error("图像错误: {0}")]
   ImageError(#[from] image::ImageError),
   #[error("URI 方案不匹配: {0}")]
-  SchemaMismatch(String),
+  SchemeMismatch(String),
   #[error("视频编码错误: {0}")]
   EncodingError(String),
+  #[error("字体加载错误")]
+  FontLoadError,
+  #[error("参数验证错误: {0}")]
+  ValidationError(String),
 }
 
 const SAVE_VIDEO_FILE_SCHEME: &str = "video";
 const DEFAULT_FPS: u32 = 25;
+const MIN_FPS: u32 = 1;
+const MAX_FPS: u32 = 120;
 
 /// 视频帧缓存
 struct FrameBuffer {
@@ -314,7 +320,7 @@ impl FrameBuffer {
 
   fn encode_to_video(&self, output_path: &str, fps: u32) -> Result<(), SaveVideoFileError> {
     if self.frames.is_empty() {
-      warn!("没有帧可以编码为视频");
+      info!("没有帧可以编码为视频，跳过编码过程");
       return Ok(());
     }
 
@@ -335,6 +341,8 @@ impl FrameBuffer {
     // 使用 ffmpeg 将帧序列编码为 MP4
     let ffmpeg_result = Command::new("ffmpeg")
       .arg("-y") // 覆盖已存在的文件
+      .arg("-loglevel")
+      .arg("error") // 减少日志输出
       .arg("-framerate")
       .arg(fps.to_string())
       .arg("-i")
@@ -393,7 +401,7 @@ impl FromUrl for SaveVideoFileOutput {
 
   fn from_url(uri: &Url) -> Result<Self, Self::Error> {
     if uri.scheme() != SAVE_VIDEO_FILE_SCHEME {
-      return Err(SaveVideoFileError::SchemaMismatch(format!(
+      return Err(SaveVideoFileError::SchemeMismatch(format!(
         "期望保存方式 '{}', 实际保存方式 '{}'",
         SAVE_VIDEO_FILE_SCHEME,
         uri.scheme()
@@ -406,6 +414,14 @@ impl FromUrl for SaveVideoFileOutput {
       .find(|(k, _)| k == "fps")
       .and_then(|(_, v)| v.parse::<u32>().ok())
       .unwrap_or(DEFAULT_FPS);
+
+    // 验证 FPS 范围
+    if fps < MIN_FPS || fps > MAX_FPS {
+      return Err(SaveVideoFileError::ValidationError(format!(
+        "FPS {} 超出有效范围 [{}, {}]",
+        fps, MIN_FPS, MAX_FPS
+      )));
+    }
 
     Ok(SaveVideoFileOutput {
       path: uri.path().to_string(),
@@ -433,7 +449,7 @@ impl SaveVideoFileOutput {
   ) -> Result<(), SaveVideoFileError> {
     // 加载嵌入的字体
     let font_data = include_bytes!("../../assets/font.ttf");
-    let font = FontRef::try_from_slice(font_data).expect("无法加载字体文件");
+    let font = FontRef::try_from_slice(font_data).map_err(|_| SaveVideoFileError::FontLoadError)?;
 
     // 绘制检测框和标签
     for DetectItem {
@@ -515,12 +531,25 @@ impl Drop for SaveVideoFileOutput {
   fn drop(&mut self) {
     // 在对象销毁时完成视频编码
     if let Some(buffer) = self.buffer.borrow_mut().take() {
+      // 确保清理总是执行
+      let cleanup_guard = CleanupGuard(&buffer);
+
       if let Err(e) = buffer.encode_to_video(&self.path, self.fps) {
         error!("编码视频时出错: {}", e);
       } else {
-        warn!("视频已保存到文件: {}", self.path);
+        info!("视频已保存到文件: {}", self.path);
       }
-      buffer.cleanup();
+
+      // cleanup_guard 在此处自动执行 cleanup
     }
+  }
+}
+
+/// RAII 守卫确保清理总是执行
+struct CleanupGuard<'a>(&'a FrameBuffer);
+
+impl<'a> Drop for CleanupGuard<'a> {
+  fn drop(&mut self) {
+    self.0.cleanup();
   }
 }
