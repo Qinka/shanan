@@ -8,9 +8,6 @@
 //
 // Copyright (C) 2026 Johann Li <me@qinka.pro>, ETVP
 
-use url::Url;
-
-
 pub trait AsNchwFrame {
   fn as_nchw(&self) -> &[u8];
 }

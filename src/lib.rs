@@ -13,7 +13,6 @@ pub mod input;
 pub mod model;
 pub mod output;
 
-
 pub trait FromUrl {
   type Error;
   fn from_url(url: &url::Url) -> Result<Self, Self::Error>
