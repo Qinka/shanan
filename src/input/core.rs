@@ -10,11 +10,11 @@
 
 use url::Url;
 
-pub trait InputSource: Sized {
-  type Error: Sized;
-  fn from_uri(uri: &Url) -> Result<Self, Self::Error>;
+
+pub trait AsNchwFrame {
+  fn as_nchw(&self) -> &[u8];
 }
 
-pub trait AsNchwFrame<'a> {
-  fn as_nchw(&'a self) -> &'a [u8];
+pub trait AsNhwcFrame {
+  fn as_nhwc(&self) -> &[u8];
 }

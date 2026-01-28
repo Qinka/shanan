@@ -14,9 +14,7 @@ use tracing::{debug, error, info};
 use url::Url;
 
 use crate::{
-  frame::RgbNchwFrame,
-  input::AsNchwFrame,
-  model::{DetectItem, DetectResult, Model},
+  FromUrl, frame::{RgbNchwFrame, RgbNhwcFrame}, input::{AsNchwFrame, AsNhwcFrame}, model::{DetectItem, DetectResult, Model}
 };
 
 const YOLO26_NUM_INPUTS: u32 = 1;
@@ -28,8 +26,9 @@ const YOLO26_HEAD_SIZES: [(usize, usize); 3] = [(80, 80), (40, 40), (20, 20)];
 const YOLO26_STRIDES: [f32; 3] = [8.0, 16.0, 32.0];
 const YOLO26_OBJECT_THRESH: f32 = 0.5;
 
-pub struct Yolo26 {
+pub struct Yolo26<Frame> {
   context: Context,
+  _phantom: std::marker::PhantomData<Frame>,
 }
 
 #[derive(Error, Debug)]
@@ -69,9 +68,11 @@ pub struct Yolo26Builder {
 
 const YOLO26_SCHEME: &str = "yolo26";
 
-impl Yolo26Builder {
-  pub fn new(model_path: Url) -> Result<Self, Yolo26Error> {
-    if model_path.scheme() != YOLO26_SCHEME {
+impl FromUrl for Yolo26Builder {
+  type Error = Yolo26Error;
+
+  fn from_url(url: &Url) -> Result<Self, Self::Error> {
+    if url.scheme() != YOLO26_SCHEME {
       return Err(Yolo26Error::ModelPathError(format!(
         "模型路径必须使用 {} 方案",
         YOLO26_SCHEME
@@ -79,16 +80,20 @@ impl Yolo26Builder {
     }
 
     Ok(Yolo26Builder {
-      model_path: model_path.path().to_string(),
+      model_path: url.path().to_string(),
       flags: InitFlags::default(),
     })
   }
+}
+
+impl Yolo26Builder {
+
   pub fn flags(mut self, flags: InitFlags) -> Self {
     self.flags = flags;
     self
   }
 
-  pub fn build(self) -> Result<Yolo26, Yolo26Error> {
+  pub fn build<Frame>(self) -> Result<Yolo26<Frame>, Yolo26Error> {
     info!("加载模型文件: {}", self.model_path);
     let mode_data = std::fs::read(&self.model_path)?;
     debug!(
@@ -153,7 +158,8 @@ impl Yolo26Builder {
     debug!("模型输入数量: {}", num_inputs);
     debug!("模型输出数量: {}", num_outputs);
 
-    Ok(Yolo26 { context })
+    let _phantom = std::marker::PhantomData::<Frame>;
+    Ok(Yolo26 { context, _phantom })
   }
 }
 
@@ -193,8 +199,9 @@ fn match_reg_cls_tensors<'a>(
   }
 }
 
-impl Model for Yolo26 {
-  type Input = RgbNchwFrame; // 输入为 NCHW 格式的字节数组
+impl<Frame: AsNhwcFrame> Model for Yolo26<Frame> {
+  // type Input = RgbNchwFrame; // 输入为 NCHW 格式的字节数组
+  type Input = Frame;
   type Output = DetectResult; // 输出为浮点数组
   type Error = Yolo26Error;
 
@@ -203,7 +210,7 @@ impl Model for Yolo26 {
     debug!("设置模型输入");
     self.context.set_input(
       0,
-      input.as_nchw(),
+      input.as_nhwc(),
       rknpu::TensorFormat::NHWC,
       TensorType::UInt8,
     )?;
