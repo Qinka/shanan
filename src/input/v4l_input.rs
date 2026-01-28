@@ -226,6 +226,32 @@ impl V4lInput {
       V4lInputError::V4lError(format!("无法重新打开设备: {}", e))
     })?;
 
+    // Get the current format and ensure it matches our expected dimensions
+    let mut format = device.format().map_err(|e| {
+      error!("获取设备格式失败: {}", e);
+      V4lInputError::V4lError(format!("无法获取设备格式: {}", e))
+    })?;
+
+    // Set the format to our desired dimensions
+    format.width = self.width as u32;
+    format.height = self.height as u32;
+
+    let actual_format = device.set_format(&format).map_err(|e| {
+      error!("设置设备格式失败: {}", e);
+      V4lInputError::V4lError(format!(
+        "无法设置设备格式为 {}x{}: {}",
+        self.width, self.height, e
+      ))
+    })?;
+
+    // Log if the device adjusted the format
+    if actual_format.width as usize != self.width || actual_format.height as usize != self.height {
+      warn!(
+        "设备调整了格式: 请求 {}x{}, 实际 {}x{}",
+        self.width, self.height, actual_format.width, actual_format.height
+      );
+    }
+
     // Create a stream for capturing with memory-mapped buffers
     let mut stream =
       v4l::io::mmap::Stream::with_buffers(&mut device, v4l::buffer::Type::VideoCapture, 4)
