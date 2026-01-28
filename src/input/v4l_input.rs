@@ -46,8 +46,8 @@ use url::Url;
 /// V4L 输入错误类型
 #[derive(Error, Debug)]
 pub enum V4lInputError {
-  #[error("URI schema mismatch")]
-  SchemaMismatch,
+  #[error("URI scheme mismatch")]
+  SchemeMismatch,
   #[error("I/O error: {0}")]
   IoError(std::io::Error),
   #[error("V4L error: {0}")]
@@ -86,12 +86,12 @@ impl FromUrl for V4lInput {
         V4L_SCHEME,
         url.scheme()
       );
-      return Err(V4lInputError::SchemaMismatch);
+      return Err(V4lInputError::SchemeMismatch);
     }
 
     // Extract device path from URL
     // Expected format: v4l:///dev/video0 or v4l://localhost/dev/video0
-    let device_path = if url.path().is_empty() {
+    let device_path = if url.path().is_empty() || url.path() == "/" {
       "/dev/video0".to_string()
     } else {
       url.path().to_string()
@@ -129,6 +129,10 @@ impl V4lInput {
   }
 
   fn capture_frame(&mut self) -> Result<Vec<u8>, V4lInputError> {
+    // NOTE: This implementation reopens the device for each frame capture.
+    // For better performance, consider refactoring to keep the device and stream
+    // open between captures. This requires handling lifetimes appropriately.
+
     // Open device for this capture
     let mut device = v4l::Device::with_path(&self.device_path)
       .map_err(|e| V4lInputError::V4lError(e.to_string()))?;
@@ -174,23 +178,28 @@ impl Iterator for V4lInputNchw {
         let width = frame.width();
         let slice = frame.as_mut();
 
-        // Simple copy assuming RGB24 format
-        // For NCHW: data is organized as [R0...Rn, G0...Gn, B0...Bn]
-        if data.len() >= channels * height * width {
-          for c in 0..channels {
-            for h in 0..height {
-              for w in 0..width {
-                let src_idx = (h * width + w) * channels + c;
-                let dst_idx = c * height * width + h * width + w;
-                slice[dst_idx] = data[src_idx];
-              }
+        // Simple copy assuming RGB24 format (interleaved: R,G,B,R,G,B,...)
+        // Convert to NCHW: data is organized as [R0...Rn, G0...Gn, B0...Bn]
+        let expected_size = channels * height * width;
+        if data.len() < expected_size {
+          error!(
+            "Captured buffer size mismatch: expected {}, got {}",
+            expected_size,
+            data.len()
+          );
+          return None;
+        }
+
+        for c in 0..channels {
+          for h in 0..height {
+            for w in 0..width {
+              let src_idx = (h * width + w) * channels + c;
+              let dst_idx = c * height * width + h * width + w;
+              slice[dst_idx] = data[src_idx];
             }
           }
-          Some(frame)
-        } else {
-          error!("Captured buffer size mismatch");
-          None
         }
+        Some(frame)
       }
       Err(e) => {
         error!("Failed to capture frame: {}", e);
@@ -224,10 +233,19 @@ impl Iterator for V4lInputNhwc {
         let width = frame.width();
         let slice = frame.as_mut();
 
-        // Simple copy assuming RGB24 format
+        // Simple copy assuming RGB24 format (interleaved: R,G,B,R,G,B,...)
         // For NHWC: data is already in the right format [R0,G0,B0, R1,G1,B1, ...]
-        let copy_size = std::cmp::min(data.len(), channels * height * width);
-        slice[..copy_size].copy_from_slice(&data[..copy_size]);
+        let expected_size = channels * height * width;
+        if data.len() < expected_size {
+          error!(
+            "Captured buffer size mismatch: expected {}, got {}",
+            expected_size,
+            data.len()
+          );
+          return None;
+        }
+
+        slice[..expected_size].copy_from_slice(&data[..expected_size]);
 
         Some(frame)
       }
