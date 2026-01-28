@@ -19,6 +19,8 @@ url = "2.5"
 
 v4l = "0.14"
 image = { version = "0.25", features = ["png", "jpeg"], optional = true }
+imageproc = { version = "0.25", optional = true }
+rusttype = { version = "0.9", optional = true }
 tracing = "0.1.44"
 tracing-subscriber = "0.3.22"
 thiserror = "2.0.18"
@@ -27,8 +29,8 @@ thiserror = "2.0.18"
 
 [features]
 
-default = ["read_image_file"]
+default = ["read_image_file", "save_image_file"]
 
 read_image_file = ["image"]
 model_yolo26 = []
-save_image_file = ["image"]
+save_image_file = ["image", "imageproc", "rusttype"]
