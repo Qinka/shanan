@@ -39,8 +39,9 @@ use crate::{
   FromUrl,
 };
 
+use std::path::Path;
 use thiserror::Error;
-use tracing::error;
+use tracing::{error, info, warn};
 use url::Url;
 use v4l::{io::traits::CaptureStream, video::Capture};
 
@@ -53,10 +54,14 @@ pub enum V4lInputError {
   IoError(std::io::Error),
   #[error("V4L error: {0}")]
   V4lError(String),
-  #[error("Invalid device path")]
-  InvalidDevicePath,
+  #[error("Device not found: {0}")]
+  DeviceNotFound(String),
+  #[error("Invalid device path: {0}")]
+  InvalidDevicePath(String),
   #[error("Unsupported pixel format")]
   UnsupportedPixelFormat,
+  #[error("Permission denied: {0}")]
+  PermissionDenied(String),
 }
 
 impl From<std::io::Error> for V4lInputError {
@@ -98,17 +103,98 @@ impl FromUrl for V4lInput {
       url.path().to_string()
     };
 
-    // Open the device to validate and get format information
-    let device =
-      v4l::Device::with_path(&device_path).map_err(|e| V4lInputError::V4lError(e.to_string()))?;
+    info!("尝试打开 V4L 设备: {}", device_path);
 
-    // Get current format to determine dimensions
-    let format = device
-      .format()
-      .map_err(|e| V4lInputError::V4lError(e.to_string()))?;
+    // Check if the device path exists
+    if !Path::new(&device_path).exists() {
+      error!("设备不存在: {}", device_path);
+      return Err(V4lInputError::DeviceNotFound(format!(
+        "设备文件不存在: {}. 请确认设备已连接并且路径正确。",
+        device_path
+      )));
+    }
+
+    // Check if the path is a character device (typical for V4L devices)
+    let metadata = std::fs::metadata(&device_path).map_err(|e| {
+      error!("无法读取设备元数据: {}: {}", device_path, e);
+      if e.kind() == std::io::ErrorKind::PermissionDenied {
+        V4lInputError::PermissionDenied(format!(
+          "没有权限访问设备: {}. 请检查用户权限或使用 sudo 运行。",
+          device_path
+        ))
+      } else {
+        V4lInputError::IoError(e)
+      }
+    })?;
+
+    // On Unix systems, check if it's a character device
+    #[cfg(unix)]
+    {
+      use std::os::unix::fs::FileTypeExt;
+      if !metadata.file_type().is_char_device() {
+        warn!("路径不是字符设备: {}", device_path);
+        return Err(V4lInputError::InvalidDevicePath(format!(
+          "{} 不是一个字符设备。V4L 设备通常是字符设备。",
+          device_path
+        )));
+      }
+    }
+
+    // Open the device to validate and get format information
+    let mut device = v4l::Device::with_path(&device_path).map_err(|e| {
+      error!("无法打开 V4L 设备 {}: {}", device_path, e);
+      let err_msg = e.to_string();
+      if err_msg.contains("Permission denied") {
+        V4lInputError::PermissionDenied(format!(
+          "打开设备 {} 时权限被拒绝。请检查用户权限或使用 sudo 运行。",
+          device_path
+        ))
+      } else if err_msg.contains("Invalid argument") {
+        V4lInputError::V4lError(format!(
+          "打开设备 {} 时参数无效。设备可能不支持 V4L2 或正在被其他程序使用。",
+          device_path
+        ))
+      } else {
+        V4lInputError::V4lError(format!("打开设备失败: {}", err_msg))
+      }
+    })?;
+
+    info!("成功打开设备: {}", device_path);
+
+    // Try to get current format
+    let format = match device.format() {
+      Ok(fmt) => {
+        info!(
+          "当前设备格式: {}x{}, fourcc: {:?}",
+          fmt.width, fmt.height, fmt.fourcc
+        );
+        fmt
+      }
+      Err(e) => {
+        warn!("无法获取设备格式，尝试设置默认格式: {}", e);
+
+        // Try to set a common format (640x480, YUYV)
+        let mut fmt = v4l::Format::new(640, 480, v4l::FourCC::new(b"YUYV"));
+        match device.set_format(&fmt) {
+          Ok(set_fmt) => {
+            info!("成功设置默认格式: {}x{}", set_fmt.width, set_fmt.height);
+            set_fmt
+          }
+          Err(set_err) => {
+            error!("无法设置格式: {}", set_err);
+            return Err(V4lInputError::V4lError(format!(
+              "无法获取或设置设备格式。设备: {}, 获取错误: {}, 设置错误: {}",
+              device_path, e, set_err
+            )));
+          }
+        }
+      }
+    };
 
     let width = format.width as usize;
     let height = format.height as usize;
+
+    info!("V4L 输入初始化成功: {}x{}", width, height);
 
     Ok(V4lInput {
       device_path,
@@ -135,18 +221,29 @@ impl V4lInput {
     // open between captures. This requires handling lifetimes appropriately.
 
     // Open device for this capture
-    let mut device = v4l::Device::with_path(&self.device_path)
-      .map_err(|e| V4lInputError::V4lError(e.to_string()))?;
+    let mut device = v4l::Device::with_path(&self.device_path).map_err(|e| {
+      error!("重新打开设备失败 {}: {}", self.device_path, e);
+      V4lInputError::V4lError(format!("无法重新打开设备: {}", e))
+    })?;
 
     // Create a stream for capturing with memory-mapped buffers
     let mut stream =
       v4l::io::mmap::Stream::with_buffers(&mut device, v4l::buffer::Type::VideoCapture, 4)
-        .map_err(|e| V4lInputError::V4lError(e.to_string()))?;
+        .map_err(|e| {
+          error!("创建捕获流失败: {}", e);
+          V4lInputError::V4lError(format!(
+            "无法创建视频捕获流。设备可能正在被其他程序使用或不支持内存映射: {}",
+            e
+          ))
+        })?;
 
     // Capture one frame
-    let (buf, _meta) = stream
-      .next()
-      .map_err(|e| V4lInputError::V4lError(e.to_string()))?;
+    let (buf, meta) = stream.next().map_err(|e| {
+      error!("捕获帧失败: {}", e);
+      V4lInputError::V4lError(format!("无法捕获视频帧: {}", e))
+    })?;
+
+    info!("成功捕获帧: {} 字节, 序列号: {}", buf.len(), meta.sequence);
 
     // Convert the buffer to RGB format
     // This is a simplified implementation - in practice, you'd need to handle
