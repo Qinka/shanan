@@ -5,9 +5,8 @@ edition = "2024"
 
 
 [[bin]]
-
-name = "shanan-sample"
-path = "src/bin/simple.rs"
+name = "simple-image"
+path = "src/bin/simple_image.rs"
 
 [dependencies]
 anyhow = "1.0"
