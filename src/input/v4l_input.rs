@@ -8,6 +8,32 @@
 //
 // Copyright (C) 2026 Johann Li <me@qinka.pro>, ETVP
 
+//! V4L (Video4Linux) 视频输入模块
+//!
+//! 此模块提供从 V4L 设备读取视频帧的功能，类似于 ImageFileInput。
+//!
+//! # 使用示例
+//!
+//! ```no_run
+//! use shanan::{FromUrl, input::V4lInput};
+//! use url::Url;
+//!
+//! // 从默认设备读取
+//! let url = Url::parse("v4l:///dev/video0").unwrap();
+//! let input = V4lInput::from_url(&url).unwrap();
+//!
+//! // 使用 NHWC 格式迭代帧
+//! for frame in input.into_nhwc() {
+//!     // 处理帧数据
+//!     println!("Captured frame: {}x{}", frame.width(), frame.height());
+//! }
+//! ```
+//!
+//! # URL 格式
+//!
+//! - `v4l:///dev/video0` - 指定视频设备路径
+//! - `v4l://` - 使用默认设备 `/dev/video0`
+
 use crate::{
   frame::{RgbNchwFrame, RgbNhwcFrame},
   FromUrl,
@@ -17,6 +43,7 @@ use thiserror::Error;
 use tracing::error;
 use url::Url;
 
+/// V4L 输入错误类型
 #[derive(Error, Debug)]
 pub enum V4lInputError {
   #[error("URI schema mismatch")]
@@ -39,6 +66,10 @@ impl From<std::io::Error> for V4lInputError {
 
 const V4L_SCHEME: &str = "v4l";
 
+/// V4L 视频输入源
+///
+/// 通过 Video4Linux API 从视频设备读取帧数据。
+/// 支持转换为 NCHW 或 NHWC 格式的帧迭代器。
 pub struct V4lInput {
   device_path: String,
   width: usize,
@@ -87,10 +118,12 @@ impl FromUrl for V4lInput {
 }
 
 impl V4lInput {
+  /// 转换为 NCHW 格式的帧迭代器
   pub fn into_nchw(self) -> V4lInputNchw {
     V4lInputNchw { inner: self }
   }
 
+  /// 转换为 NHWC 格式的帧迭代器
   pub fn into_nhwc(self) -> V4lInputNhwc {
     V4lInputNhwc { inner: self }
   }
@@ -117,6 +150,9 @@ impl V4lInput {
   }
 }
 
+/// NCHW 格式的 V4L 帧迭代器
+///
+/// 将 V4L 设备捕获的帧转换为 NCHW (Batch, Channel, Height, Width) 格式。
 pub struct V4lInputNchw {
   inner: V4lInput,
 }
@@ -164,6 +200,9 @@ impl Iterator for V4lInputNchw {
   }
 }
 
+/// NHWC 格式的 V4L 帧迭代器
+///
+/// 将 V4L 设备捕获的帧转换为 NHWC (Batch, Height, Width, Channel) 格式。
 pub struct V4lInputNhwc {
   inner: V4lInput,
 }
