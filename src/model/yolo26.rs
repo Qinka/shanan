@@ -16,7 +16,7 @@ use url::Url;
 use crate::{
   FromUrl,
   input::AsNhwcFrame,
-  model::{DetectItem, DetectResult, Model},
+  model::{DetectItem, DetectResult, Model, WithLabel},
 };
 
 const YOLO26_NUM_INPUTS: u32 = 1;
@@ -28,9 +28,9 @@ const YOLO26_HEAD_SIZES: [(usize, usize); 3] = [(80, 80), (40, 40), (20, 20)];
 const YOLO26_STRIDES: [f32; 3] = [8.0, 16.0, 32.0];
 const YOLO26_OBJECT_THRESH: f32 = 0.5;
 
-pub struct Yolo26<Frame> {
+pub struct Yolo26<Frame, T> {
   context: Context,
-  _phantom: std::marker::PhantomData<Frame>,
+  _phantom: std::marker::PhantomData<(Frame, T)>,
 }
 
 #[derive(Error, Debug)]
@@ -94,7 +94,7 @@ impl Yolo26Builder {
     self
   }
 
-  pub fn build<Frame>(self) -> Result<Yolo26<Frame>, Yolo26Error> {
+  pub fn build<Frame, T>(self) -> Result<Yolo26<Frame, T>, Yolo26Error> {
     info!("加载模型文件: {}", self.model_path);
     let mode_data = std::fs::read(&self.model_path)?;
     debug!(
@@ -159,7 +159,7 @@ impl Yolo26Builder {
     debug!("模型输入数量: {}", num_inputs);
     debug!("模型输出数量: {}", num_outputs);
 
-    let _phantom = std::marker::PhantomData::<Frame>;
+    let _phantom = std::marker::PhantomData::<(Frame, T)>;
     Ok(Yolo26 { context, _phantom })
   }
 }
@@ -200,10 +200,10 @@ fn match_reg_cls_tensors<'a>(
   }
 }
 
-impl<Frame: AsNhwcFrame> Model for Yolo26<Frame> {
+impl<Frame: AsNhwcFrame, T: WithLabel> Model for Yolo26<Frame, T> {
   // type Input = RgbNchwFrame; // 输入为 NCHW 格式的字节数组
   type Input = Frame;
-  type Output = DetectResult; // 输出为浮点数组
+  type Output = DetectResult<T>; // 输出为浮点数组
   type Error = Yolo26Error;
 
   fn infer(&self, input: &Self::Input) -> Result<Self::Output, Self::Error> {
@@ -324,7 +324,7 @@ impl<Frame: AsNhwcFrame> Model for Yolo26<Frame> {
 
           if xmin >= 0.0 && ymin >= 0.0 && xmax <= YOLO26_INPUT_W && ymax <= YOLO26_INPUT_H {
             items.push(DetectItem {
-              class_id,
+              kind: T::from_label_id(class_id),
               score,
               bbox: [
                 xmin / YOLO26_INPUT_W,

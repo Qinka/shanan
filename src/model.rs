@@ -9,7 +9,7 @@
 // Copyright (C) 2026 Johann Li <me@qinka.pro>, ETVP
 
 mod core;
-pub use self::core::{DetectItem, DetectResult, Model};
+pub use self::core::{CocoLabel, DetectItem, DetectResult, Model, WithLabel};
 
 mod yolo26;
 pub use self::yolo26::{Yolo26, Yolo26Builder};

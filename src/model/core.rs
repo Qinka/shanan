@@ -8,6 +8,8 @@
 //
 // Copyright (C) 2026 Johann Li <me@qinka.pro>, ETVP
 
+use shanan_macro::toml_label;
+
 pub trait Model {
   type Input;
   type Output;
@@ -18,13 +20,21 @@ pub trait Model {
 }
 
 #[derive(Debug, Clone)]
-pub struct DetectItem {
-  pub class_id: u32,
+pub struct DetectItem<T> {
+  pub kind: T,
   pub score: f32,
   pub bbox: [f32; 4], // [x_min, y_min, x_max, y_max]
 }
 
 #[derive(Debug, Clone)]
-pub struct DetectResult {
-  pub items: Box<[DetectItem]>,
+pub struct DetectResult<T> {
+  pub items: Box<[DetectItem<T>]>,
 }
+
+pub trait WithLabel: Sized + std::fmt::Debug {
+  fn to_label_str(&self) -> String;
+  fn from_label_id(id: u32) -> Self;
+}
+
+#[toml_label(file = "labels/coco.toml")]
+pub enum CocoLabel {}

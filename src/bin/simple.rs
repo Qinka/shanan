@@ -12,7 +12,11 @@ use anyhow::Result;
 use clap::Parser;
 use url::Url;
 
-use shanan::{FromUrl, model::Model, output::Render};
+use shanan::{
+  FromUrl,
+  model::{CocoLabel, DetectResult, Model},
+  output::Render,
+};
 use tracing::info;
 
 /// Shanan 项目参数配置
@@ -46,7 +50,7 @@ fn main() -> Result<()> {
   info!("开始推理...");
   let now = std::time::Instant::now();
   for frame in input_image.into_nhwc() {
-    let result = model.infer(&frame)?;
+    let result: DetectResult<CocoLabel> = model.infer(&frame)?;
     let elapsed = now.elapsed();
     info!("推理完成，耗时: {:.2?}", elapsed);
     output.render_result(&frame, &result)?;

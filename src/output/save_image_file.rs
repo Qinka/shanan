@@ -21,93 +21,93 @@ use crate::{
   FromUrl,
   frame::{RgbNchwFrame, RgbNhwcFrame},
   input::{AsNchwFrame, AsNhwcFrame},
-  model::{DetectItem, DetectResult},
+  model::{DetectItem, DetectResult, WithLabel},
   output::Render,
 };
 
-// COCO 80 类别名称
-const COCO_CLASSES: [&str; 80] = [
-  "person",
-  "bicycle",
-  "car",
-  "motorcycle",
-  "airplane",
-  "bus",
-  "train",
-  "truck",
-  "boat",
-  "traffic light",
-  "fire hydrant",
-  "stop sign",
-  "parking meter",
-  "bench",
-  "bird",
-  "cat",
-  "dog",
-  "horse",
-  "sheep",
-  "cow",
-  "elephant",
-  "bear",
-  "zebra",
-  "giraffe",
-  "backpack",
-  "umbrella",
-  "handbag",
-  "tie",
-  "suitcase",
-  "frisbee",
-  "skis",
-  "snowboard",
-  "sports ball",
-  "kite",
-  "baseball bat",
-  "baseball glove",
-  "skateboard",
-  "surfboard",
-  "tennis racket",
-  "bottle",
-  "wine glass",
-  "cup",
-  "fork",
-  "knife",
-  "spoon",
-  "bowl",
-  "banana",
-  "apple",
-  "sandwich",
-  "orange",
-  "broccoli",
-  "carrot",
-  "hot dog",
-  "pizza",
-  "donut",
-  "cake",
-  "chair",
-  "couch",
-  "potted plant",
-  "bed",
-  "dining table",
-  "toilet",
-  "tv",
-  "laptop",
-  "mouse",
-  "remote",
-  "keyboard",
-  "cell phone",
-  "microwave",
-  "oven",
-  "toaster",
-  "sink",
-  "refrigerator",
-  "book",
-  "clock",
-  "vase",
-  "scissors",
-  "teddy bear",
-  "hair drier",
-  "toothbrush",
-];
+// // COCO 80 类别名称
+// const COCO_CLASSES: [&str; 80] = [
+//   "person",
+//   "bicycle",
+//   "car",
+//   "motorcycle",
+//   "airplane",
+//   "bus",
+//   "train",
+//   "truck",
+//   "boat",
+//   "traffic light",
+//   "fire hydrant",
+//   "stop sign",
+//   "parking meter",
+//   "bench",
+//   "bird",
+//   "cat",
+//   "dog",
+//   "horse",
+//   "sheep",
+//   "cow",
+//   "elephant",
+//   "bear",
+//   "zebra",
+//   "giraffe",
+//   "backpack",
+//   "umbrella",
+//   "handbag",
+//   "tie",
+//   "suitcase",
+//   "frisbee",
+//   "skis",
+//   "snowboard",
+//   "sports ball",
+//   "kite",
+//   "baseball bat",
+//   "baseball glove",
+//   "skateboard",
+//   "surfboard",
+//   "tennis racket",
+//   "bottle",
+//   "wine glass",
+//   "cup",
+//   "fork",
+//   "knife",
+//   "spoon",
+//   "bowl",
+//   "banana",
+//   "apple",
+//   "sandwich",
+//   "orange",
+//   "broccoli",
+//   "carrot",
+//   "hot dog",
+//   "pizza",
+//   "donut",
+//   "cake",
+//   "chair",
+//   "couch",
+//   "potted plant",
+//   "bed",
+//   "dining table",
+//   "toilet",
+//   "tv",
+//   "laptop",
+//   "mouse",
+//   "remote",
+//   "keyboard",
+//   "cell phone",
+//   "microwave",
+//   "oven",
+//   "toaster",
+//   "sink",
+//   "refrigerator",
+//   "book",
+//   "clock",
+//   "vase",
+//   "scissors",
+//   "teddy bear",
+//   "hair drier",
+//   "toothbrush",
+// ];
 
 // 文本渲染常量
 const LABEL_FONT_SIZE: f32 = 20.0;
@@ -116,10 +116,10 @@ const LABEL_CHAR_WIDTH: f32 = 11.0; // 每字符平均宽度（粗略估计）
 const LABEL_TEXT_VERTICAL_PADDING: i32 = 2;
 
 // 在图像上绘制一个矩形边框，bbox 为归一化坐标 [x_min, y_min, x_max, y_max]
-fn draw_bbox_with_label(
+fn draw_bbox_with_label<T: WithLabel>(
   image: &mut RgbImage,
   bbox: &[f32; 4],
-  class_id: u32,
+  kind: &T,
   score: f32,
   color: [u8; 3],
   font: &FontRef,
@@ -173,15 +173,8 @@ fn draw_bbox_with_label(
     }
   }
 
-  // 获取类别名称
-  let class_name = if (class_id as usize) < COCO_CLASSES.len() {
-    COCO_CLASSES[class_id as usize]
-  } else {
-    "unknown"
-  };
-
   // 创建标签文本
-  let label = format!("{} {:.2}", class_name, score);
+  let label = format!("{} {:.2}", kind.to_label_str(), score);
 
   // 文本参数
   let scale = PxScale::from(LABEL_FONT_SIZE);
@@ -254,26 +247,21 @@ impl FromUrl for SaveImageFileOutput {
 }
 
 impl SaveImageFileOutput {
-  fn render_detect_result(
+  fn render_detect_result<T: WithLabel>(
     &self,
     mut image: RgbImage,
-    result: &DetectResult,
+    result: &DetectResult<T>,
   ) -> Result<(), SaveImageFileError> {
     // 加载嵌入的字体
     let font_data = include_bytes!("../../assets/font.ttf");
     let font = FontRef::try_from_slice(font_data).expect("无法加载字体文件");
 
     // 绘制检测框和标签
-    for DetectItem {
-      class_id,
-      score,
-      bbox,
-    } in result.items.iter()
-    {
+    for DetectItem { kind, score, bbox } in result.items.iter() {
       draw_bbox_with_label(
         &mut image,
         bbox,
-        *class_id,
+        kind,
         *score,
         [0, 0, 255], // 蓝色边框
         &font,
@@ -296,10 +284,14 @@ impl SaveImageFileOutput {
   }
 }
 
-impl Render<RgbNchwFrame, DetectResult> for SaveImageFileOutput {
+impl<T: WithLabel> Render<RgbNchwFrame, DetectResult<T>> for SaveImageFileOutput {
   type Error = SaveImageFileError;
 
-  fn render_result(&self, frame: &RgbNchwFrame, result: &DetectResult) -> Result<(), Self::Error> {
+  fn render_result(
+    &self,
+    frame: &RgbNchwFrame,
+    result: &DetectResult<T>,
+  ) -> Result<(), Self::Error> {
     let width = frame.width() as u32;
     let height = frame.height() as u32;
     let data = frame.as_nchw();
@@ -319,10 +311,14 @@ impl Render<RgbNchwFrame, DetectResult> for SaveImageFileOutput {
   }
 }
 
-impl Render<RgbNhwcFrame, DetectResult> for SaveImageFileOutput {
+impl<T: WithLabel> Render<RgbNhwcFrame, DetectResult<T>> for SaveImageFileOutput {
   type Error = SaveImageFileError;
 
-  fn render_result(&self, frame: &RgbNhwcFrame, result: &DetectResult) -> Result<(), Self::Error> {
+  fn render_result(
+    &self,
+    frame: &RgbNhwcFrame,
+    result: &DetectResult<T>,
+  ) -> Result<(), Self::Error> {
     let width = frame.width() as u32;
     let height = frame.height() as u32;
     let data = frame.as_nhwc();
