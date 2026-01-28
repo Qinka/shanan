@@ -22,8 +22,8 @@ use url::Url;
 
 #[derive(Error, Debug)]
 pub enum GStreamerInputError {
-  #[error("URI schema mismatch")]
-  SchemaMismatch,
+  #[error("URI scheme mismatch")]
+  SchemeMismatch,
   #[error("GStreamer error: {0}")]
   GStreamerError(#[from] gst::glib::Error),
   #[error("GStreamer boolean error: {0}")]
@@ -38,6 +38,8 @@ pub enum GStreamerInputError {
   UnsupportedFormat,
   #[error("Pipeline error: {0}")]
   PipelineError(String),
+  #[error("Buffer size mismatch: expected {expected} bytes, got {actual} bytes")]
+  BufferSizeMismatch { expected: usize, actual: usize },
 }
 
 const GSTREAMER_INPUT_SCHEME: &str = "gst";
@@ -57,10 +59,10 @@ impl FromUrl for GStreamerInput {
         GSTREAMER_INPUT_SCHEME,
         url.scheme()
       );
-      return Err(GStreamerInputError::SchemaMismatch);
+      return Err(GStreamerInputError::SchemeMismatch);
     }
 
-    // Initialize GStreamer
+    // Initialize GStreamer (subsequent calls are safe no-ops)
     gst::init()?;
 
     // Parse the pipeline description from the URL path
@@ -90,7 +92,9 @@ impl FromUrl for GStreamerInput {
 
 impl Drop for GStreamerInput {
   fn drop(&mut self) {
-    let _ = self.pipeline.set_state(gst::State::Null);
+    if let Err(e) = self.pipeline.set_state(gst::State::Null) {
+      tracing::warn!("Failed to stop GStreamer pipeline: {}", e);
+    }
   }
 }
 
@@ -135,8 +139,12 @@ impl Iterator for GStreamerInputNhwc {
 }
 
 fn convert_sample_to_nchw(sample: gst::Sample) -> Result<RgbNchwFrame, GStreamerInputError> {
-  let buffer = sample.buffer().ok_or(GStreamerInputError::PipelineError("No buffer in sample".to_string()))?;
-  let caps = sample.caps().ok_or(GStreamerInputError::PipelineError("No caps in sample".to_string()))?;
+  let buffer = sample.buffer().ok_or_else(|| {
+    GStreamerInputError::PipelineError("No buffer in sample".to_string())
+  })?;
+  let caps = sample.caps().ok_or_else(|| {
+    GStreamerInputError::PipelineError("No caps in sample".to_string())
+  })?;
   
   let video_info = gst_video::VideoInfo::from_caps(caps)
     .map_err(|_| GStreamerInputError::VideoInfoError)?;
@@ -144,8 +152,20 @@ fn convert_sample_to_nchw(sample: gst::Sample) -> Result<RgbNchwFrame, GStreamer
   let width = video_info.width() as usize;
   let height = video_info.height() as usize;
 
-  let map = buffer.map_readable().map_err(|_| GStreamerInputError::PipelineError("Failed to map buffer".to_string()))?;
+  let map = buffer.map_readable().map_err(|e| {
+    GStreamerInputError::PipelineError(format!("Failed to map buffer for reading: {}", e))
+  })?;
   let data = map.as_slice();
+
+  // Validate buffer size
+  let expected_size = height * width * 3;
+  let actual_size = data.len();
+  if actual_size < expected_size {
+    return Err(GStreamerInputError::BufferSizeMismatch {
+      expected: expected_size,
+      actual: actual_size,
+    });
+  }
 
   let mut frame = RgbNchwFrame::with_shape(height, width);
   let frame_slice = frame.as_mut();
@@ -184,8 +204,12 @@ fn convert_sample_to_nchw(sample: gst::Sample) -> Result<RgbNchwFrame, GStreamer
 }
 
 fn convert_sample_to_nhwc(sample: gst::Sample) -> Result<RgbNhwcFrame, GStreamerInputError> {
-  let buffer = sample.buffer().ok_or(GStreamerInputError::PipelineError("No buffer in sample".to_string()))?;
-  let caps = sample.caps().ok_or(GStreamerInputError::PipelineError("No caps in sample".to_string()))?;
+  let buffer = sample.buffer().ok_or_else(|| {
+    GStreamerInputError::PipelineError("No buffer in sample".to_string())
+  })?;
+  let caps = sample.caps().ok_or_else(|| {
+    GStreamerInputError::PipelineError("No caps in sample".to_string())
+  })?;
   
   let video_info = gst_video::VideoInfo::from_caps(caps)
     .map_err(|_| GStreamerInputError::VideoInfoError)?;
@@ -193,8 +217,20 @@ fn convert_sample_to_nhwc(sample: gst::Sample) -> Result<RgbNhwcFrame, GStreamer
   let width = video_info.width() as usize;
   let height = video_info.height() as usize;
 
-  let map = buffer.map_readable().map_err(|_| GStreamerInputError::PipelineError("Failed to map buffer".to_string()))?;
+  let map = buffer.map_readable().map_err(|e| {
+    GStreamerInputError::PipelineError(format!("Failed to map buffer for reading: {}", e))
+  })?;
   let data = map.as_slice();
+
+  // Validate buffer size
+  let expected_size = height * width * 3;
+  let actual_size = data.len();
+  if actual_size < expected_size {
+    return Err(GStreamerInputError::BufferSizeMismatch {
+      expected: expected_size,
+      actual: actual_size,
+    });
+  }
 
   let mut frame = RgbNhwcFrame::with_shape(height, width);
   let frame_slice = frame.as_mut();
