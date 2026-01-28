@@ -11,6 +11,8 @@
 use std::path::Path;
 
 use image::{ImageBuffer, Rgb, RgbImage};
+use imageproc::drawing::{draw_filled_rect_mut, draw_text_mut};
+use rusttype::{Font, Scale};
 use thiserror::Error;
 use tracing::warn;
 use url::Url;
@@ -23,8 +25,99 @@ use crate::{
   output::Render,
 };
 
+// COCO 80 类别名称
+const COCO_CLASSES: [&str; 80] = [
+  "person",
+  "bicycle",
+  "car",
+  "motorcycle",
+  "airplane",
+  "bus",
+  "train",
+  "truck",
+  "boat",
+  "traffic light",
+  "fire hydrant",
+  "stop sign",
+  "parking meter",
+  "bench",
+  "bird",
+  "cat",
+  "dog",
+  "horse",
+  "sheep",
+  "cow",
+  "elephant",
+  "bear",
+  "zebra",
+  "giraffe",
+  "backpack",
+  "umbrella",
+  "handbag",
+  "tie",
+  "suitcase",
+  "frisbee",
+  "skis",
+  "snowboard",
+  "sports ball",
+  "kite",
+  "baseball bat",
+  "baseball glove",
+  "skateboard",
+  "surfboard",
+  "tennis racket",
+  "bottle",
+  "wine glass",
+  "cup",
+  "fork",
+  "knife",
+  "spoon",
+  "bowl",
+  "banana",
+  "apple",
+  "sandwich",
+  "orange",
+  "broccoli",
+  "carrot",
+  "hot dog",
+  "pizza",
+  "donut",
+  "cake",
+  "chair",
+  "couch",
+  "potted plant",
+  "bed",
+  "dining table",
+  "toilet",
+  "tv",
+  "laptop",
+  "mouse",
+  "remote",
+  "keyboard",
+  "cell phone",
+  "microwave",
+  "oven",
+  "toaster",
+  "sink",
+  "refrigerator",
+  "book",
+  "clock",
+  "vase",
+  "scissors",
+  "teddy bear",
+  "hair drier",
+  "toothbrush",
+];
+
 // 在图像上绘制一个矩形边框，bbox 为归一化坐标 [x_min, y_min, x_max, y_max]
-fn draw_bbox(image: &mut RgbImage, bbox: &[f32; 4], color: [u8; 3]) {
+fn draw_bbox_with_label(
+  image: &mut RgbImage,
+  bbox: &[f32; 4],
+  class_id: u32,
+  score: f32,
+  color: [u8; 3],
+  font: &Font,
+) {
   let (w, h) = (image.width() as f32, image.height() as f32);
 
   let mut x_min = (bbox[0] * w).floor() as i32;
@@ -42,21 +135,74 @@ fn draw_bbox(image: &mut RgbImage, bbox: &[f32; 4], color: [u8; 3]) {
     return;
   }
 
-  // Top and bottom edges
-  for x in x_min..=x_max {
-    let top = image.get_pixel_mut(x as u32, y_min as u32);
-    *top = Rgb(color);
-    let bottom = image.get_pixel_mut(x as u32, y_max as u32);
-    *bottom = Rgb(color);
+  // 绘制边框（加粗为2像素）
+  for thickness in 0..2 {
+    let x_min_t = (x_min + thickness).min(w as i32 - 1);
+    let y_min_t = (y_min + thickness).min(h as i32 - 1);
+    let x_max_t = (x_max - thickness).max(0);
+    let y_max_t = (y_max - thickness).max(0);
+
+    // Top and bottom edges
+    for x in x_min_t..=x_max_t {
+      if y_min_t >= 0 && (y_min_t as u32) < image.height() && (x as u32) < image.width() {
+        let top = image.get_pixel_mut(x as u32, y_min_t as u32);
+        *top = Rgb(color);
+      }
+      if y_max_t >= 0 && (y_max_t as u32) < image.height() && (x as u32) < image.width() {
+        let bottom = image.get_pixel_mut(x as u32, y_max_t as u32);
+        *bottom = Rgb(color);
+      }
+    }
+
+    // Left and right edges
+    for y in y_min_t..=y_max_t {
+      if x_min_t >= 0 && (x_min_t as u32) < image.width() && (y as u32) < image.height() {
+        let left = image.get_pixel_mut(x_min_t as u32, y as u32);
+        *left = Rgb(color);
+      }
+      if x_max_t >= 0 && (x_max_t as u32) < image.width() && (y as u32) < image.height() {
+        let right = image.get_pixel_mut(x_max_t as u32, y as u32);
+        *right = Rgb(color);
+      }
+    }
   }
 
-  // Left and right edges
-  for y in y_min..=y_max {
-    let left = image.get_pixel_mut(x_min as u32, y as u32);
-    *left = Rgb(color);
-    let right = image.get_pixel_mut(x_max as u32, y as u32);
-    *right = Rgb(color);
-  }
+  // 获取类别名称
+  let class_name = if (class_id as usize) < COCO_CLASSES.len() {
+    COCO_CLASSES[class_id as usize]
+  } else {
+    "unknown"
+  };
+
+  // 创建标签文本
+  let label = format!("{} {:.2}", class_name, score);
+
+  // 文本参数
+  let scale = Scale::uniform(20.0);
+  let text_color = Rgb([255u8, 255u8, 255u8]); // 白色文本
+
+  // 估算文本大小（粗略估计）
+  let text_width = (label.len() as f32 * 11.0) as i32;
+  let text_height = 24i32;
+
+  // 确定标签背景位置（在边框上方）
+  let label_x = x_min.max(0);
+  let label_y = (y_min - text_height).max(0);
+
+  // 绘制标签背景
+  let rect = imageproc::rect::Rect::at(label_x, label_y).of_size(text_width as u32, text_height as u32);
+  draw_filled_rect_mut(image, rect, Rgb(color));
+
+  // 绘制文本
+  draw_text_mut(
+    image,
+    text_color,
+    label_x,
+    label_y + 2,
+    scale,
+    font,
+    &label,
+  );
 }
 
 pub struct SaveImageFileOutput {
@@ -99,17 +245,24 @@ impl SaveImageFileOutput {
     mut image: RgbImage,
     result: &DetectResult,
   ) -> Result<(), SaveImageFileError> {
-    // 绘制检测框
+    // 加载嵌入的字体
+    let font_data = include_bytes!("../../assets/DejaVuSans.ttf");
+    let font = Font::try_from_bytes(font_data as &[u8]).expect("无法加载字体文件");
+
+    // 绘制检测框和标签
     for DetectItem {
-      class_id: _,
-      score: _,
+      class_id,
+      score,
       bbox,
     } in result.items.iter()
     {
-      draw_bbox(
+      draw_bbox_with_label(
         &mut image,
         bbox,
-        [255, 0, 0], // 红色边框
+        *class_id,
+        *score,
+        [0, 0, 255], // 蓝色边框（BGR格式在RGB中是蓝色）
+        &font,
       );
     }
 
