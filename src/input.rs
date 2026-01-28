@@ -14,3 +14,8 @@ pub use self::core::{AsNchwFrame, AsNhwcFrame};
 // #[cfg(feature = "read_image_file")]
 mod read_image_file;
 pub use self::read_image_file::{ImageFileInput, ImageFileInputError};
+
+#[cfg(feature = "gstreamer_input")]
+mod gstreamer_input;
+#[cfg(feature = "gstreamer_input")]
+pub use self::gstreamer_input::{GStreamerInput, GStreamerInputError};
