@@ -41,7 +41,7 @@ use crate::{
 
 use std::path::Path;
 use thiserror::Error;
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 use url::Url;
 use v4l::{io::traits::CaptureStream, video::Capture};
 
@@ -143,6 +143,27 @@ impl FromUrl for V4lInput {
     // Open the device to validate and get format information
     let mut device = v4l::Device::with_path(&device_path).map_err(|e| {
       error!("无法打开 V4L 设备 {}: {}", device_path, e);
+
+      // Try to extract the underlying IO error for better diagnostics
+      if let Some(io_err) = e.source().and_then(|s| s.downcast_ref::<std::io::Error>()) {
+        match io_err.kind() {
+          std::io::ErrorKind::PermissionDenied => {
+            return V4lInputError::PermissionDenied(format!(
+              "打开设备 {} 时权限被拒绝。请检查用户权限或使用 sudo 运行。",
+              device_path
+            ));
+          }
+          std::io::ErrorKind::InvalidInput => {
+            return V4lInputError::V4lError(format!(
+              "打开设备 {} 时参数无效。设备可能不支持 V4L2 或正在被其他程序使用。",
+              device_path
+            ));
+          }
+          _ => {}
+        }
+      }
+
+      // Fallback to string matching for error messages
       let err_msg = e.to_string();
       if err_msg.contains("Permission denied") {
         V4lInputError::PermissionDenied(format!(
@@ -174,7 +195,7 @@ impl FromUrl for V4lInput {
         warn!("无法获取设备格式，尝试设置默认格式: {}", e);
 
         // Try to set a common format (640x480, YUYV)
-        let mut fmt = v4l::Format::new(640, 480, v4l::FourCC::new(b"YUYV"));
+        let fmt = v4l::Format::new(640, 480, v4l::FourCC::new(b"YUYV"));
         match device.set_format(&fmt) {
           Ok(set_fmt) => {
             info!("成功设置默认格式: {}x{}", set_fmt.width, set_fmt.height);
@@ -269,7 +290,7 @@ impl V4lInput {
       V4lInputError::V4lError(format!("无法捕获视频帧: {}", e))
     })?;
 
-    info!("成功捕获帧: {} 字节, 序列号: {}", buf.len(), meta.sequence);
+    debug!("成功捕获帧: {} 字节, 序列号: {}", buf.len(), meta.sequence);
 
     // Convert the buffer to RGB format
     // This is a simplified implementation - in practice, you'd need to handle
