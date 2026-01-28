@@ -9,7 +9,7 @@
 // Copyright (C) 2026 Johann Li <me@qinka.pro>, ETVP
 
 mod core;
-pub use self::core::{AsNchwFrame, InputSource};
+pub use self::core::{AsNchwFrame, AsNhwcFrame};
 
 // #[cfg(feature = "read_image_file")]
 mod read_image_file;

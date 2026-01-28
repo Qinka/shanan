@@ -10,11 +10,7 @@
 
 use url::Url;
 
-pub trait Render: Sized {
-  type Frame;
-  type Output;
+pub trait Render<Frame, Output>: Sized {
   type Error;
-  fn render_result(&self, frame: &Self::Frame, result: Self::Output) -> Result<(), Self::Error>;
-
-  fn from_uri(uri: &Url) -> Result<Self, Self::Error>;
+  fn render_result(&self, frame: &Frame, result: &Output) -> Result<(), Self::Error>;
 }

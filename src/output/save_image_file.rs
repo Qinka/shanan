@@ -16,10 +16,7 @@ use tracing::warn;
 use url::Url;
 
 use crate::{
-  frame::RgbNchwFrame,
-  input::AsNchwFrame,
-  model::{DetectItem, DetectResult},
-  output::Render,
+  FromUrl, frame::{RgbNchwFrame, RgbNhwcFrame}, input::{AsNchwFrame, AsNhwcFrame}, model::{DetectItem, DetectResult}, output::Render
 };
 
 // 在图像上绘制一个矩形边框，bbox 为归一化坐标 [x_min, y_min, x_max, y_max]
@@ -74,8 +71,10 @@ pub enum SaveImageFileError {
 
 const SAVE_IMAGE_FILE_SCHEME: &str = "image";
 
-impl SaveImageFileOutput {
-  pub fn new(uri: &Url) -> Result<Self, SaveImageFileError> {
+impl FromUrl for SaveImageFileOutput {
+  type Error = SaveImageFileError;
+
+  fn from_url(uri: &Url) -> Result<Self, Self::Error> {
     if uri.scheme() != SAVE_IMAGE_FILE_SCHEME {
       return Err(SaveImageFileError::SchemaMismatch(format!(
         "期望保存方式 '{}', 实际保存方式 '{}'",
@@ -90,27 +89,9 @@ impl SaveImageFileOutput {
   }
 }
 
-impl Render for SaveImageFileOutput {
-  type Frame = RgbNchwFrame;
-  type Output = DetectResult;
-  type Error = SaveImageFileError;
+impl SaveImageFileOutput {
 
-  fn render_result(&self, frame: &Self::Frame, result: Self::Output) -> Result<(), Self::Error> {
-    let width = frame.width() as u32;
-    let height = frame.height() as u32;
-    let data = frame.as_nchw();
-
-    // 将 NCHW 转为 RGB 图像
-    let mut image: RgbImage = ImageBuffer::from_fn(width, height, |x, y| {
-      let x = x as usize;
-      let y = y as usize;
-      let idx = y * (width as usize) + x;
-      let r = data[idx];
-      let g = data[(height as usize * width as usize) + idx];
-      let b = data[(2 * height as usize * width as usize) + idx];
-      Rgb([r, g, b])
-    });
-
+  fn render_detect_result(&self, mut image: RgbImage, result: &DetectResult) -> Result<(), SaveImageFileError> {
     // 绘制检测框
     for DetectItem {
       class_id: _,
@@ -139,8 +120,50 @@ impl Render for SaveImageFileOutput {
 
     Ok(())
   }
+}
 
-  fn from_uri(uri: &url::Url) -> Result<Self, Self::Error> {
-    SaveImageFileOutput::new(uri)
+impl Render<RgbNchwFrame, DetectResult> for SaveImageFileOutput {
+  type Error = SaveImageFileError;
+
+  fn render_result(&self, frame: &RgbNchwFrame, result: &DetectResult) -> Result<(), Self::Error> {
+    let width = frame.width() as u32;
+    let height = frame.height() as u32;
+    let data = frame.as_nchw();
+
+    // 将 NCHW 转为 RGB 图像
+    let image: RgbImage = ImageBuffer::from_fn(width, height, |x, y| {
+      let x = x as usize;
+      let y = y as usize;
+      let idx = y * (width as usize) + x;
+      let r = data[idx];
+      let g = data[(height as usize * width as usize) + idx];
+      let b = data[(2 * height as usize * width as usize) + idx];
+      Rgb([r, g, b])
+    });
+
+    self.render_detect_result(image, result)
+  }
+}
+
+impl Render<RgbNhwcFrame, DetectResult> for SaveImageFileOutput {
+  type Error = SaveImageFileError;
+
+  fn render_result(&self, frame: &RgbNhwcFrame, result: &DetectResult) -> Result<(), Self::Error> {
+    let width = frame.width() as u32;
+    let height = frame.height() as u32;
+    let data = frame.as_nhwc();
+
+    // 将 NHWC 转为 RGB 图像
+    let image: RgbImage = ImageBuffer::from_fn(width, height, |x, y| {
+      let x = x as usize;
+      let y = y as usize;
+      let idx = (y * (width as usize) + x) * 3;
+      let r = data[idx];
+      let g = data[idx + 1];
+      let b = data[idx + 2];
+      Rgb([r, g, b])
+    });
+
+    self.render_detect_result(image, result)
   }
 }

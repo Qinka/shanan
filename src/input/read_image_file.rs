@@ -8,16 +8,13 @@
 //
 // Copyright (C) 2026 Johann Li <me@qinka.pro>, ETVP
 
-use crate::{frame::RgbNchwFrame, input::InputSource};
+use crate::{frame::{RgbNchwFrame, RgbNhwcFrame}, FromUrl};
 
-use image::{DynamicImage, ImageReader};
+use image::{ImageReader, RgbImage};
 use thiserror::Error;
 use tracing::error;
 use url::Url;
 
-pub struct ImageFileInput {
-  image: Option<RgbNchwFrame>,
-}
 
 #[derive(Error, Debug)]
 pub enum ImageFileInputError {
@@ -41,12 +38,64 @@ impl From<image::ImageError> for ImageFileInputError {
   }
 }
 
-impl From<DynamicImage> for RgbNchwFrame {
-  fn from(image: DynamicImage) -> Self {
-    let rgb_image = image.to_rgb8();
+
+
+const READ_IMAGE_FILE_SCHEME: &str = "image";
+
+pub struct ImageFileInput {
+  image: Option<RgbImage>,
+}
+
+impl FromUrl for ImageFileInput {
+  type Error = ImageFileInputError;
+
+  fn from_url(url: &Url) -> Result<Self, Self::Error> {
+    if url.scheme() != READ_IMAGE_FILE_SCHEME {
+      error!(
+        "URI scheme mismatch: expected '{}', found '{}'",
+        READ_IMAGE_FILE_SCHEME,
+        url.scheme()
+      );
+      return Err(ImageFileInputError::SchemaMismatch);
+    }
+
+    let path = url.path();
+    let image = ImageReader::open(path)?.decode()?;
+
+    Ok(ImageFileInput {
+      image: Some(image.into()),
+    })
+  }
+}
+
+impl ImageFileInput {
+  pub fn into_nchw(self) -> ImageFileInputNchw {
+    ImageFileInputNchw { inner: self }
+  }
+
+  pub fn into_nhwc(self) -> ImageFileInputNhwc {
+    ImageFileInputNhwc { inner: self }
+  }
+}
+
+pub struct ImageFileInputNchw {
+  inner: ImageFileInput,
+}
+
+impl Iterator for ImageFileInputNchw {
+  type Item = RgbNchwFrame;
+
+  fn next(&mut self) -> Option<Self::Item> {
+    self.inner.image.take().map(|img| RgbNchwFrame::from(img))
+  }
+}
+
+
+impl From<RgbImage> for RgbNchwFrame {
+  fn from(image: RgbImage) -> Self {
 
     let mut frame = {
-      let (width, height) = rgb_image.dimensions();
+      let (width, height) = image.dimensions();
       RgbNchwFrame::with_shape(height as usize, width as usize)
     };
 
@@ -58,7 +107,7 @@ impl From<DynamicImage> for RgbNchwFrame {
     for c in 0..channels {
       for h in 0..height {
         for w in 0..width {
-          let pixel = rgb_image.get_pixel(w, h);
+          let pixel = image.get_pixel(w, h);
           let value = pixel[c as usize];
           let index = (c as usize) * (height as usize) * (width as usize)
             + (h as usize) * (width as usize)
@@ -71,34 +120,44 @@ impl From<DynamicImage> for RgbNchwFrame {
   }
 }
 
-const READ_IMAGE_FILE_SCHEME: &str = "image";
+pub struct ImageFileInputNhwc {
+  inner: ImageFileInput,
+}
 
-impl InputSource for ImageFileInput {
-  type Error = ImageFileInputError;
+impl Iterator for ImageFileInputNhwc {
+  type Item = RgbNhwcFrame;
 
-  fn from_uri(uri: &Url) -> Result<Self, Self::Error> {
-    if uri.scheme() != READ_IMAGE_FILE_SCHEME {
-      error!(
-        "URI scheme mismatch: expected '{}', found '{}'",
-        READ_IMAGE_FILE_SCHEME,
-        uri.scheme()
-      );
-      return Err(ImageFileInputError::SchemaMismatch);
-    }
-
-    let path = uri.path();
-    let image = ImageReader::open(path)?.decode()?;
-
-    Ok(ImageFileInput {
-      image: Some(image.into()),
-    })
+  fn next(&mut self) -> Option<Self::Item> {
+    self.inner.image.take().map(|img| RgbNhwcFrame::from(img))
   }
 }
 
-impl Iterator for ImageFileInput {
-  type Item = RgbNchwFrame;
 
-  fn next(&mut self) -> Option<Self::Item> {
-    self.image.take()
+impl From<RgbImage> for RgbNhwcFrame {
+  fn from(image: RgbImage) -> Self {
+
+    let mut frame = {
+      let (width, height) = image.dimensions();
+      RgbNhwcFrame::with_shape(height as usize, width as usize)
+    };
+
+    let channels = frame.channels() as u32;
+    let height = frame.height() as u32;
+    let width = frame.width() as u32;
+    let slice = frame.as_mut();
+
+    for h in 0..height {
+      for w in 0..width {
+        for c in 0..channels {
+          let pixel = image.get_pixel(w, h);
+          let value = pixel[c as usize];
+          let index = (h as usize) * (width as usize) * (channels as usize)
+            + (w as usize) * (channels as usize)
+            + (c as usize);
+          slice[index] = value;
+        }
+      }
+    }
+    frame
   }
 }

@@ -8,14 +8,29 @@
 //
 // Copyright (C) 2026 Johann Li <me@qinka.pro>, ETVP
 
-use crate::input::AsNchwFrame;
+use crate::input::{AsNchwFrame, AsNhwcFrame};
 
 const RGB_CHANNELS: usize = 3;
+
+pub trait FrameFormat {
+  fn tensor_format(&self) -> rknpu::TensorFormat;
+  fn tensor_type(&self) -> rknpu::TensorType;
+}
 
 pub struct RgbNchwFrame {
   data: Box<[u8]>,
   height: usize,
   width: usize,
+}
+
+impl FrameFormat for RgbNchwFrame {
+  fn tensor_format(&self) -> rknpu::TensorFormat {
+    rknpu::TensorFormat::NCHW
+  }
+
+  fn tensor_type(&self) -> rknpu::TensorType {
+    rknpu::TensorType::UInt8
+  }
 }
 
 impl RgbNchwFrame {
@@ -48,8 +63,60 @@ impl AsMut<[u8]> for RgbNchwFrame {
   }
 }
 
-impl<'a> AsNchwFrame<'a> for RgbNchwFrame {
-  fn as_nchw(&'a self) -> &'a [u8] {
+impl AsNchwFrame for RgbNchwFrame {
+  fn as_nchw(&self) -> &[u8] {
+    &self.data
+  }
+}
+
+pub struct RgbNhwcFrame {
+  data: Box<[u8]>,
+  height: usize,
+  width: usize,
+}
+
+impl FrameFormat for RgbNhwcFrame {
+  fn tensor_format(&self) -> rknpu::TensorFormat {
+    rknpu::TensorFormat::NHWC
+  }
+
+  fn tensor_type(&self) -> rknpu::TensorType {
+    rknpu::TensorType::UInt8
+  }
+}
+
+impl RgbNhwcFrame {
+  pub fn with_shape(height: usize, width: usize) -> Self {
+    let size = RGB_CHANNELS * height * width;
+    let data = vec![0u8; size].into_boxed_slice();
+    Self {
+      data,
+      height,
+      width,
+    }
+  }
+
+  pub fn height(&self) -> usize {
+    self.height
+  }
+
+  pub fn width(&self) -> usize {
+    self.width
+  }
+
+  pub fn channels(&self) -> usize {
+    RGB_CHANNELS
+  }
+}
+
+impl AsMut<[u8]> for RgbNhwcFrame {
+  fn as_mut(&mut self) -> &mut [u8] {
+    &mut self.data
+  }
+}
+
+impl AsNhwcFrame for RgbNhwcFrame {
+  fn as_nhwc(&self) -> &[u8] {
     &self.data
   }
 }
