@@ -14,7 +14,9 @@ use tracing::{debug, error, info};
 use url::Url;
 
 use crate::{
-  FromUrl, frame::{RgbNchwFrame, RgbNhwcFrame}, input::{AsNchwFrame, AsNhwcFrame}, model::{DetectItem, DetectResult, Model}
+  FromUrl,
+  input::AsNhwcFrame,
+  model::{DetectItem, DetectResult, Model},
 };
 
 const YOLO26_NUM_INPUTS: u32 = 1;
@@ -87,7 +89,6 @@ impl FromUrl for Yolo26Builder {
 }
 
 impl Yolo26Builder {
-
   pub fn flags(mut self, flags: InitFlags) -> Self {
     self.flags = flags;
     self

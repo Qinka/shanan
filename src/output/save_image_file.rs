@@ -16,7 +16,11 @@ use tracing::warn;
 use url::Url;
 
 use crate::{
-  FromUrl, frame::{RgbNchwFrame, RgbNhwcFrame}, input::{AsNchwFrame, AsNhwcFrame}, model::{DetectItem, DetectResult}, output::Render
+  FromUrl,
+  frame::{RgbNchwFrame, RgbNhwcFrame},
+  input::{AsNchwFrame, AsNhwcFrame},
+  model::{DetectItem, DetectResult},
+  output::Render,
 };
 
 // 在图像上绘制一个矩形边框，bbox 为归一化坐标 [x_min, y_min, x_max, y_max]
@@ -90,8 +94,11 @@ impl FromUrl for SaveImageFileOutput {
 }
 
 impl SaveImageFileOutput {
-
-  fn render_detect_result(&self, mut image: RgbImage, result: &DetectResult) -> Result<(), SaveImageFileError> {
+  fn render_detect_result(
+    &self,
+    mut image: RgbImage,
+    result: &DetectResult,
+  ) -> Result<(), SaveImageFileError> {
     // 绘制检测框
     for DetectItem {
       class_id: _,

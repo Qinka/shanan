@@ -8,13 +8,15 @@
 //
 // Copyright (C) 2026 Johann Li <me@qinka.pro>, ETVP
 
-use crate::{frame::{RgbNchwFrame, RgbNhwcFrame}, FromUrl};
+use crate::{
+  FromUrl,
+  frame::{RgbNchwFrame, RgbNhwcFrame},
+};
 
 use image::{ImageReader, RgbImage};
 use thiserror::Error;
 use tracing::error;
 use url::Url;
-
 
 #[derive(Error, Debug)]
 pub enum ImageFileInputError {
@@ -37,8 +39,6 @@ impl From<image::ImageError> for ImageFileInputError {
     ImageFileInputError::ImageLoadError(err)
   }
 }
-
-
 
 const READ_IMAGE_FILE_SCHEME: &str = "image";
 
@@ -86,14 +86,12 @@ impl Iterator for ImageFileInputNchw {
   type Item = RgbNchwFrame;
 
   fn next(&mut self) -> Option<Self::Item> {
-    self.inner.image.take().map(|img| RgbNchwFrame::from(img))
+    self.inner.image.take().map(RgbNchwFrame::from)
   }
 }
 
-
 impl From<RgbImage> for RgbNchwFrame {
   fn from(image: RgbImage) -> Self {
-
     let mut frame = {
       let (width, height) = image.dimensions();
       RgbNchwFrame::with_shape(height as usize, width as usize)
@@ -128,14 +126,12 @@ impl Iterator for ImageFileInputNhwc {
   type Item = RgbNhwcFrame;
 
   fn next(&mut self) -> Option<Self::Item> {
-    self.inner.image.take().map(|img| RgbNhwcFrame::from(img))
+    self.inner.image.take().map(RgbNhwcFrame::from)
   }
 }
 
-
 impl From<RgbImage> for RgbNhwcFrame {
   fn from(image: RgbImage) -> Self {
-
     let mut frame = {
       let (width, height) = image.dimensions();
       RgbNhwcFrame::with_shape(height as usize, width as usize)
