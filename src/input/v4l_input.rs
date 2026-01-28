@@ -42,6 +42,7 @@ use crate::{
 use thiserror::Error;
 use tracing::error;
 use url::Url;
+use v4l::{io::traits::CaptureStream, video::Capture};
 
 /// V4L 输入错误类型
 #[derive(Error, Debug)]
