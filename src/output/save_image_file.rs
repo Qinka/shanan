@@ -260,7 +260,7 @@ impl SaveImageFileOutput {
     result: &DetectResult,
   ) -> Result<(), SaveImageFileError> {
     // 加载嵌入的字体
-    let font_data = include_bytes!("../../assets/DejaVuSans.ttf");
+    let font_data = include_bytes!("../../assets/font.ttf");
     let font = FontRef::try_from_slice(font_data).expect("无法加载字体文件");
 
     // 绘制检测框和标签
