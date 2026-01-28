@@ -10,9 +10,9 @@
 
 use std::path::Path;
 
+use ab_glyph::{FontRef, PxScale};
 use image::{ImageBuffer, Rgb, RgbImage};
 use imageproc::drawing::{draw_filled_rect_mut, draw_text_mut};
-use rusttype::{Font, Scale};
 use thiserror::Error;
 use tracing::warn;
 use url::Url;
@@ -122,7 +122,7 @@ fn draw_bbox_with_label(
   class_id: u32,
   score: f32,
   color: [u8; 3],
-  font: &Font,
+  font: &FontRef,
 ) {
   let (w, h) = (image.width() as f32, image.height() as f32);
 
@@ -184,7 +184,7 @@ fn draw_bbox_with_label(
   let label = format!("{} {:.2}", class_name, score);
 
   // 文本参数
-  let scale = Scale::uniform(LABEL_FONT_SIZE);
+  let scale = PxScale::from(LABEL_FONT_SIZE);
   let text_color = Rgb([255u8, 255u8, 255u8]); // 白色文本
 
   // 估算文本大小（粗略估计）
@@ -261,7 +261,7 @@ impl SaveImageFileOutput {
   ) -> Result<(), SaveImageFileError> {
     // 加载嵌入的字体
     let font_data = include_bytes!("../../assets/DejaVuSans.ttf");
-    let font = Font::try_from_bytes(font_data as &[u8]).expect("无法加载字体文件");
+    let font = FontRef::try_from_slice(font_data).expect("无法加载字体文件");
 
     // 绘制检测框和标签
     for DetectItem {
