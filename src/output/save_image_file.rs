@@ -109,6 +109,12 @@ const COCO_CLASSES: [&str; 80] = [
   "toothbrush",
 ];
 
+// 文本渲染常量
+const LABEL_FONT_SIZE: f32 = 20.0;
+const LABEL_TEXT_HEIGHT: i32 = 24;
+const LABEL_CHAR_WIDTH: f32 = 11.0; // 每字符平均宽度（粗略估计）
+const LABEL_TEXT_VERTICAL_PADDING: i32 = 2;
+
 // 在图像上绘制一个矩形边框，bbox 为归一化坐标 [x_min, y_min, x_max, y_max]
 fn draw_bbox_with_label(
   image: &mut RgbImage,
@@ -178,31 +184,39 @@ fn draw_bbox_with_label(
   let label = format!("{} {:.2}", class_name, score);
 
   // 文本参数
-  let scale = Scale::uniform(20.0);
+  let scale = Scale::uniform(LABEL_FONT_SIZE);
   let text_color = Rgb([255u8, 255u8, 255u8]); // 白色文本
 
   // 估算文本大小（粗略估计）
-  let text_width = (label.len() as f32 * 11.0) as i32;
-  let text_height = 24i32;
+  let text_width = (label.len() as f32 * LABEL_CHAR_WIDTH) as i32;
+  let text_height = LABEL_TEXT_HEIGHT;
 
   // 确定标签背景位置（在边框上方）
   let label_x = x_min.max(0);
   let label_y = (y_min - text_height).max(0);
 
-  // 绘制标签背景
-  let rect = imageproc::rect::Rect::at(label_x, label_y).of_size(text_width as u32, text_height as u32);
-  draw_filled_rect_mut(image, rect, Rgb(color));
+  // 确保标签不超出图像边界
+  let max_width = (w as i32 - label_x).max(0);
+  let label_width = text_width.min(max_width) as u32;
+  let label_height = text_height as u32;
 
-  // 绘制文本
-  draw_text_mut(
-    image,
-    text_color,
-    label_x,
-    label_y + 2,
-    scale,
-    font,
-    &label,
-  );
+  // 仅在标签有空间时绘制
+  if label_width > 0 && label_height > 0 {
+    // 绘制标签背景
+    let rect = imageproc::rect::Rect::at(label_x, label_y).of_size(label_width, label_height);
+    draw_filled_rect_mut(image, rect, Rgb(color));
+
+    // 绘制文本
+    draw_text_mut(
+      image,
+      text_color,
+      label_x,
+      label_y + LABEL_TEXT_VERTICAL_PADDING,
+      scale,
+      font,
+      &label,
+    );
+  }
 }
 
 pub struct SaveImageFileOutput {
@@ -261,7 +275,7 @@ impl SaveImageFileOutput {
         bbox,
         *class_id,
         *score,
-        [0, 0, 255], // 蓝色边框（BGR格式在RGB中是蓝色）
+        [0, 0, 255], // 蓝色边框
         &font,
       );
     }
