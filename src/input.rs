@@ -14,3 +14,6 @@ pub use self::core::{AsNchwFrame, AsNhwcFrame};
 // #[cfg(feature = "read_image_file")]
 mod read_image_file;
 pub use self::read_image_file::{ImageFileInput, ImageFileInputError};
+
+mod v4l_input;
+pub use self::v4l_input::{V4lInput, V4lInputError};
