@@ -9,8 +9,8 @@
 // Copyright (C) 2026 Johann Li <me@qinka.pro>, ETVP
 
 use crate::{
-  FromUrl,
   frame::{RgbNchwFrame, RgbNhwcFrame},
+  FromUrl,
 };
 
 use thiserror::Error;
@@ -67,13 +67,14 @@ impl FromUrl for V4lInput {
     };
 
     // Open the device to validate and get format information
-    let device = v4l::Device::with_path(&device_path)
-      .map_err(|e| V4lInputError::V4lError(e.to_string()))?;
+    let device =
+      v4l::Device::with_path(&device_path).map_err(|e| V4lInputError::V4lError(e.to_string()))?;
 
     // Get current format to determine dimensions
-    let format = device.format()
+    let format = device
+      .format()
       .map_err(|e| V4lInputError::V4lError(e.to_string()))?;
-    
+
     let width = format.width as usize;
     let height = format.height as usize;
 
@@ -100,11 +101,13 @@ impl V4lInput {
       .map_err(|e| V4lInputError::V4lError(e.to_string()))?;
 
     // Create a stream for capturing with memory-mapped buffers
-    let mut stream = v4l::io::mmap::Stream::with_buffers(&mut device, v4l::buffer::Type::VideoCapture, 4)
-      .map_err(|e| V4lInputError::V4lError(e.to_string()))?;
+    let mut stream =
+      v4l::io::mmap::Stream::with_buffers(&mut device, v4l::buffer::Type::VideoCapture, 4)
+        .map_err(|e| V4lInputError::V4lError(e.to_string()))?;
 
     // Capture one frame
-    let (buf, _meta) = stream.next()
+    let (buf, _meta) = stream
+      .next()
       .map_err(|e| V4lInputError::V4lError(e.to_string()))?;
 
     // Convert the buffer to RGB format
@@ -126,7 +129,7 @@ impl Iterator for V4lInputNchw {
       Ok(data) => {
         // Convert raw buffer to RgbNchwFrame
         let mut frame = RgbNchwFrame::with_shape(self.inner.height, self.inner.width);
-        
+
         // Note: This assumes the data is already in RGB format
         // In a real implementation, you'd need to convert from the actual
         // pixel format (e.g., YUYV, MJPEG, etc.) to RGB
@@ -173,7 +176,7 @@ impl Iterator for V4lInputNhwc {
       Ok(data) => {
         // Convert raw buffer to RgbNhwcFrame
         let mut frame = RgbNhwcFrame::with_shape(self.inner.height, self.inner.width);
-        
+
         // Note: This assumes the data is already in RGB format
         // In a real implementation, you'd need to convert from the actual
         // pixel format (e.g., YUYV, MJPEG, etc.) to RGB
@@ -186,7 +189,7 @@ impl Iterator for V4lInputNhwc {
         // For NHWC: data is already in the right format [R0,G0,B0, R1,G1,B1, ...]
         let copy_size = std::cmp::min(data.len(), channels * height * width);
         slice[..copy_size].copy_from_slice(&data[..copy_size]);
-        
+
         Some(frame)
       }
       Err(e) => {

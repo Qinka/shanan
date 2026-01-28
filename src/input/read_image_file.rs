@@ -9,8 +9,8 @@
 // Copyright (C) 2026 Johann Li <me@qinka.pro>, ETVP
 
 use crate::{
-  FromUrl,
   frame::{RgbNchwFrame, RgbNhwcFrame},
+  FromUrl,
 };
 
 use image::{ImageReader, RgbImage};
