@@ -43,9 +43,9 @@ fn main() -> Result<()> {
   let model = shanan::model::Yolo26Builder::from_url(&args.model)?.build()?;
   let output = shanan::output::SaveImageFileOutput::from_url(&args.output)?;
 
-  info!("开始推理...");
-  let now = std::time::Instant::now();
   for frame in input_image.into_nhwc() {
+    info!("开始推理...");
+    let now = std::time::Instant::now();
     let result = model.infer(&frame)?;
     let elapsed = now.elapsed();
     info!("推理完成，耗时: {:.2?}", elapsed);
