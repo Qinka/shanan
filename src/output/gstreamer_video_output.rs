@@ -8,6 +8,72 @@
 //
 // Copyright (C) 2026 Johann Li <me@qinka.pro>, ETVP
 
+//! # GStreamer 视频文件输出模块
+//!
+//! 将处理后的视频帧保存为视频文件，支持多种格式。
+//!
+//! ## 支持的格式
+//!
+//! - **MP4** (H.264) - 最常用的视频格式
+//! - **MKV** (Matroska) - 开放标准容器格式
+//! - **AVI** - 传统视频格式
+//! - **WebM** (VP8) - Web 友好格式
+//!
+//! ## URL Scheme
+//!
+//! `gstvideo://`
+//!
+//! ## 基本用法
+//!
+//! ```no_run
+//! use shanan::{FromUrl, output::GStreamerVideoOutput};
+//! use url::Url;
+//!
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! // 创建 MP4 视频输出
+//! let url = Url::parse("gstvideo:///output.mp4?width=1280&height=720&fps=30")?;
+//! let output = GStreamerVideoOutput::from_url(&url)?;
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! ## 参数说明
+//!
+//! - `width`: 视频宽度（像素），默认 640
+//! - `height`: 视频高度（像素），默认 480
+//! - `fps`: 帧率（帧/秒），默认 30
+//!
+//! ## 完整示例
+//!
+//! ```no_run
+//! use shanan::{
+//!     FromUrl,
+//!     input::GStreamerInput,
+//!     output::GStreamerVideoOutput,
+//!     model::{CocoLabel, DetectResult, Model},
+//! };
+//! use url::Url;
+//!
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! // 输入: RTSP 流
+//! let input_url = Url::parse(
+//!     "gst://rtspsrc location=rtsp://camera.local/stream ! \
+//!      decodebin ! videoconvert ! video/x-raw,format=RGB"
+//! )?;
+//! let input = GStreamerInput::from_url(&input_url)?;
+//!
+//! // 输出: 视频文件
+//! let output_url = Url::parse("gstvideo:///output.mp4?width=1280&height=720&fps=30")?;
+//! let output = GStreamerVideoOutput::from_url(&output_url)?;
+//!
+//! // 处理并保存
+//! for frame in input.into_nhwc() {
+//!     // output.render_result(&frame, &result)?;
+//! }
+//! # Ok(())
+//! # }
+//! ```
+
 use std::sync::{Arc, Mutex};
 
 use crate::{
@@ -24,28 +90,53 @@ use thiserror::Error;
 use tracing::{error, info};
 use url::Url;
 
+/// GStreamer 视频输出错误类型
 #[derive(Error, Debug)]
 pub enum GStreamerVideoOutputError {
+  /// URI scheme 不匹配
   #[error("URI scheme mismatch")]
   SchemeMismatch,
+  /// GStreamer 库错误
   #[error("GStreamer error: {0}")]
   GStreamerError(#[from] gst::glib::Error),
+  /// GStreamer 布尔操作错误
   #[error("GStreamer boolean error: {0}")]
   GStreamerBoolError(#[from] gst::glib::BoolError),
+  /// 无法获取 appsrc 元素
   #[error("Failed to get appsrc element")]
   AppSrcNotFound,
+  /// 无法转换元素为 appsrc
   #[error("Failed to convert element to appsrc")]
   AppSrcConversionFailed,
+  /// 管道错误
   #[error("Pipeline error: {0}")]
   PipelineError(String),
+  /// 状态改变错误
   #[error("State change error: {0}")]
   StateChangeError(#[from] gst::StateChangeError),
+  /// 缓冲区创建错误
   #[error("Buffer creation error")]
   BufferCreationError,
 }
 
 const GSTREAMER_VIDEO_OUTPUT_SCHEME: &str = "gst";
 
+/// GStreamer 视频文件输出
+///
+/// 管理 GStreamer 编码管道，将视频帧保存为文件。
+///
+/// # 示例
+///
+/// ```no_run
+/// use shanan::{FromUrl, output::GStreamerVideoOutput};
+/// use url::Url;
+///
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let url = Url::parse("gstvideo:///output.mp4?width=1920&height=1080&fps=30")?;
+/// let output = GStreamerVideoOutput::from_url(&url)?;
+/// # Ok(())
+/// # }
+/// ```
 pub struct GStreamerVideoOutput {
   pipeline: gst::Pipeline,
   appsrc: gst_app::AppSrc,

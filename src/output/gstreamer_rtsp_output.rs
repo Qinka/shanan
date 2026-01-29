@@ -8,6 +8,83 @@
 //
 // Copyright (C) 2026 Johann Li <me@qinka.pro>, ETVP
 
+//! # GStreamer RTSP 推流输出模块
+//!
+//! 通过 RTSP 协议实时推送视频流。
+//!
+//! ## URL Scheme
+//!
+//! `gstrtsp://`
+//!
+//! ## 基本用法
+//!
+//! ```no_run
+//! use shanan::{FromUrl, output::GStreamerRtspOutput};
+//! use url::Url;
+//!
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! // 创建 RTSP 推流输出
+//! let url = Url::parse("gstrtsp://0.0.0.0/live?width=1280&height=720&fps=30&port=8554")?;
+//! let output = GStreamerRtspOutput::from_url(&url)?;
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! ## 参数说明
+//!
+//! - `width`: 视频宽度（像素），默认 640
+//! - `height`: 视频高度（像素），默认 480
+//! - `fps`: 帧率（帧/秒），默认 30
+//! - `port`: UDP 端口，默认 8554
+//!
+//! ## 客户端连接
+//!
+//! 推流启动后，可以使用以下方式连接：
+//!
+//! ```bash
+//! # VLC
+//! vlc rtsp://服务器IP:8554/live
+//!
+//! # FFplay
+//! ffplay -rtsp_transport udp rtsp://服务器IP:8554/live
+//!
+//! # GStreamer
+//! gst-launch-1.0 rtspsrc location=rtsp://服务器IP:8554/live ! decodebin ! autovideosink
+//! ```
+//!
+//! ## 完整示例
+//!
+//! ```no_run
+//! use shanan::{
+//!     FromUrl,
+//!     input::GStreamerInput,
+//!     output::GStreamerRtspOutput,
+//!     model::{CocoLabel, DetectResult, Model},
+//! };
+//! use url::Url;
+//!
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! // 输入: 摄像头
+//! let input_url = Url::parse(
+//!     "gst://v4l2src device=/dev/video0 ! \
+//!      videoconvert ! video/x-raw,format=RGB"
+//! )?;
+//! let input = GStreamerInput::from_url(&input_url)?;
+//!
+//! // 输出: RTSP 推流
+//! let output_url = Url::parse("gstrtsp://0.0.0.0/camera?port=8554")?;
+//! let output = GStreamerRtspOutput::from_url(&output_url)?;
+//!
+//! println!("RTSP 流已启动: rtsp://localhost:8554/camera");
+//!
+//! // 处理并推流
+//! for frame in input.into_nhwc() {
+//!     // output.render_result(&frame, &result)?;
+//! }
+//! # Ok(())
+//! # }
+//! ```
+
 use std::sync::{Arc, Mutex};
 
 use crate::{
@@ -25,27 +102,53 @@ use tracing::{error, info};
 use url::Url;
 
 #[derive(Error, Debug)]
+/// GStreamer RTSP 输出错误类型
+#[derive(Error, Debug)]
 pub enum GStreamerRtspOutputError {
+  /// URI scheme 不匹配
   #[error("URI scheme mismatch")]
   SchemeMismatch,
+  /// GStreamer 库错误
   #[error("GStreamer error: {0}")]
   GStreamerError(#[from] gst::glib::Error),
+  /// GStreamer 布尔操作错误
   #[error("GStreamer boolean error: {0}")]
   GStreamerBoolError(#[from] gst::glib::BoolError),
+  /// 无法获取 appsrc 元素
   #[error("Failed to get appsrc element")]
   AppSrcNotFound,
+  /// 无法转换元素为 appsrc
   #[error("Failed to convert element to appsrc")]
   AppSrcConversionFailed,
+  /// 管道错误
   #[error("Pipeline error: {0}")]
   PipelineError(String),
+  /// 状态改变错误
   #[error("State change error: {0}")]
   StateChangeError(#[from] gst::StateChangeError),
+  /// 缓冲区创建错误
   #[error("Buffer creation error")]
   BufferCreationError,
 }
 
 const GSTREAMER_RTSP_OUTPUT_SCHEME: &str = "rtsp";
 
+/// GStreamer RTSP 推流输出
+///
+/// 管理 GStreamer RTSP 编码管道，实时推送视频流。
+///
+/// # 示例
+///
+/// ```no_run
+/// use shanan::{FromUrl, output::GStreamerRtspOutput};
+/// use url::Url;
+///
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let url = Url::parse("gstrtsp://0.0.0.0/live?width=1280&height=720&fps=30&port=8554")?;
+/// let output = GStreamerRtspOutput::from_url(&url)?;
+/// # Ok(())
+/// # }
+/// ```
 pub struct GStreamerRtspOutput {
   pipeline: gst::Pipeline,
   appsrc: gst_app::AppSrc,

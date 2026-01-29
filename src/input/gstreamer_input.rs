@@ -8,6 +8,126 @@
 //
 // Copyright (C) 2026 Johann Li <me@qinka.pro>, ETVP
 
+//! # GStreamer 视频输入模块
+//!
+//! 本模块提供基于 GStreamer 的视频输入功能，支持多种视频源：
+//! - 视频文件读取
+//! - 摄像头捕获（V4L2）
+//! - RTSP 网络流
+//! - 测试视频源
+//!
+//! ## 系统依赖
+//!
+//! 使用前需要安装 GStreamer 开发库：
+//!
+//! **Ubuntu/Debian:**
+//! ```bash
+//! sudo apt-get install libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev
+//! ```
+//!
+//! **Fedora/RHEL:**
+//! ```bash
+//! sudo dnf install gstreamer1-devel gstreamer1-plugins-base-devel
+//! ```
+//!
+//! **macOS:**
+//! ```bash
+//! brew install gstreamer
+//! ```
+//!
+//! ## Cargo 特性
+//!
+//! 在 `Cargo.toml` 中启用 `gstreamer_input` 特性：
+//!
+//! ```toml
+//! [dependencies]
+//! shanan = { version = "0.1", features = ["gstreamer_input"] }
+//! ```
+//!
+//! ## 基本用法
+//!
+//! ```no_run
+//! use shanan::{FromUrl, input::GStreamerInput};
+//! use url::Url;
+//!
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! // 从视频文件读取
+//! let url = Url::parse("gst://filesrc location=video.mp4 ! decodebin ! videoconvert ! video/x-raw,format=RGB")?;
+//! let input = GStreamerInput::from_url(&url)?;
+//!
+//! // 处理每一帧
+//! for frame in input.into_nhwc() {
+//!     println!("处理帧: {}x{}", frame.width(), frame.height());
+//! }
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! ## RTSP 流示例
+//!
+//! ```no_run
+//! use shanan::{FromUrl, input::GStreamerInput};
+//! use url::Url;
+//!
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! // 从 RTSP 流读取
+//! let url = Url::parse(
+//!     "gst://rtspsrc location=rtsp://192.168.1.100:8554/stream ! \
+//!      decodebin ! videoconvert ! video/x-raw,format=RGB"
+//! )?;
+//! let input = GStreamerInput::from_url(&url)?;
+//!
+//! for frame in input.into_nhwc() {
+//!     // 处理帧
+//! }
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! ## 摄像头捕获
+//!
+//! ```no_run
+//! use shanan::{FromUrl, input::GStreamerInput};
+//! use url::Url;
+//!
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! let url = Url::parse(
+//!     "gst://v4l2src device=/dev/video0 ! \
+//!      videoconvert ! video/x-raw,format=RGB,width=640,height=480"
+//! )?;
+//! let input = GStreamerInput::from_url(&url)?;
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! ## Pipeline Builder
+//!
+//! 使用 `GStreamerInputPipelineBuilder` 构建复杂管道：
+//!
+//! ```no_run
+//! use shanan::input::GStreamerInputPipelineBuilder;
+//!
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! let input = GStreamerInputPipelineBuilder::new()
+//!     .camera("/dev/video0", 640, 480, 30)
+//!     .target_format("RGB")
+//!     .build()?;
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! ## 支持的视频格式
+//!
+//! - RGB - 标准 RGB 格式
+//! - BGR - BGR 格式（会自动转换为 RGB）
+//!
+//! 其他格式需要在管道中使用 `videoconvert` 插件转换。
+//!
+//! ## 安全性注意
+//!
+//! GStreamer 管道描述直接传递给解析器。在生产环境中使用不可信输入时，
+//! 应验证或限制管道描述以防止资源滥用。
+
 use std::collections::HashMap;
 
 use crate::{
@@ -22,26 +142,39 @@ use thiserror::Error;
 use tracing::{error, info};
 use url::Url;
 
+/// GStreamer 输入错误类型
+///
+/// 包含所有可能的 GStreamer 输入相关错误。
 #[derive(Error, Debug)]
 pub enum GStreamerInputError {
+  /// URI scheme 不匹配（期望 "gst://"）
   #[error("URI scheme mismatch")]
   SchemeMismatch,
+  /// GStreamer 库错误
   #[error("GStreamer error: {0}")]
   GStreamerError(#[from] gst::glib::Error),
+  /// GStreamer 布尔操作错误
   #[error("GStreamer boolean error: {0}")]
   GStreamerBoolError(#[from] gst::glib::BoolError),
+  /// 无法获取 appsink 元素
   #[error("Failed to get appsink element")]
   AppSinkNotFound,
+  /// 无法转换元素为 appsink
   #[error("Failed to convert element to appsink")]
   AppSinkConversionFailed,
+  /// 无法从 caps 获取视频信息
   #[error("Failed to get video info from caps")]
   VideoInfoError,
+  /// 不支持的视频格式
   #[error("Unsupported video format")]
   UnsupportedFormat,
+  /// 管道错误
   #[error("Pipeline error: {0}")]
   PipelineError(String),
+  /// 缓冲区大小不匹配
   #[error("Buffer size mismatch: expected {expected} bytes, got {actual} bytes")]
   BufferSizeMismatch { expected: usize, actual: usize },
+  /// 状态改变错误
   #[error("State change error: {0}")]
   StateChangeError(#[from] gst::StateChangeError),
 }
@@ -107,6 +240,23 @@ impl GStreamerInputBuilderItem {
   }
 }
 
+/// GStreamer 输入管道构建器
+///
+/// 用于构建复杂的 GStreamer 输入管道。
+///
+/// # 示例
+///
+/// ```no_run
+/// use shanan::input::GStreamerInputPipelineBuilder;
+///
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let input = GStreamerInputPipelineBuilder::new()
+///     .camera("/dev/video0", 640, 480, 30)
+///     .target_format("RGB")
+///     .build()?;
+/// # Ok(())
+/// # }
+/// ```
 pub struct GStreamerInputPipelineBuilder {
   items: Vec<GStreamerInputBuilderItem>,
 }
@@ -245,6 +395,26 @@ impl FromUrl for GStreamerInputPipelineBuilder {
   }
 }
 
+/// GStreamer 视频输入
+///
+/// 管理 GStreamer 管道和 appsink，提供视频帧迭代功能。
+///
+/// # 示例
+///
+/// ```no_run
+/// use shanan::{FromUrl, input::GStreamerInput};
+/// use url::Url;
+///
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let url = Url::parse("gst://videotestsrc ! videoconvert ! video/x-raw,format=RGB")?;
+/// let input = GStreamerInput::from_url(&url)?;
+///
+/// for frame in input.into_nhwc() {
+///     // 处理帧
+/// }
+/// # Ok(())
+/// # }
+/// ```
 pub struct GStreamerInput {
   pipeline: gst::Pipeline,
   appsink: gst_app::AppSink,
@@ -279,6 +449,9 @@ impl GStreamerInput {
   }
 }
 
+/// GStreamer 输入的 NCHW 格式迭代器
+///
+/// 将视频帧转换为 NCHW 格式（Channels × Height × Width）。
 pub struct GStreamerInputNchw {
   inner: GStreamerInput,
 }
@@ -297,6 +470,9 @@ impl Iterator for GStreamerInputNchw {
   }
 }
 
+/// GStreamer 输入的 NHWC 格式迭代器
+///
+/// 将视频帧转换为 NHWC 格式（Height × Width × Channels）。
 pub struct GStreamerInputNhwc {
   inner: GStreamerInput,
 }
