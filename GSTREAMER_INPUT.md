@@ -167,6 +167,7 @@ rtspsrc location=rtsp://192.168.1.100:8554/stream ! decodebin ! videoconvert ! v
 2. **性能**: GStreamer 提供硬件加速支持，可以使用相应的插件提高性能
 3. **错误处理**: 管道错误会通过 `GStreamerInputError` 返回
 4. **资源清理**: `GStreamerInput` 在 drop 时会自动停止管道
+5. **安全性**: GStreamer 管道描述直接传递给 GStreamer 解析器。在生产环境中使用不可信的输入时，应验证或限制管道描述以防止资源滥用
 
 ## 故障排除
 
