@@ -41,5 +41,6 @@ default = ["read_image_file", "save_image_file", "gstreamer_input"]
 
 read_image_file = ["image"]
 gstreamer_input = ["gstreamer", "gstreamer-app", "gstreamer-video"]
+gstreamer_output = ["gstreamer", "gstreamer-app", "gstreamer-video"]
 model_yolo26 = []
 save_image_file = ["image", "imageproc", "ab_glyph"]
