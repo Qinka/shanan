@@ -8,8 +8,13 @@
 //
 // Copyright (C) 2026 Johann Li <me@qinka.pro>, ETVP
 
-mod core;
-pub use self::core::{AsNchwFrame, AsNhwcFrame};
+pub trait AsNchwFrame {
+  fn as_nchw(&self) -> &[u8];
+}
+
+pub trait AsNhwcFrame {
+  fn as_nhwc(&self) -> &[u8];
+}
 
 // #[cfg(feature = "read_image_file")]
 mod read_image_file;

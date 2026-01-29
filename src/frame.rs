@@ -17,13 +17,11 @@ pub trait FrameFormat {
   fn tensor_type(&self) -> rknpu::TensorType;
 }
 
-pub struct RgbNchwFrame {
+pub struct RgbNchwFrame<const W: u32, const H: u32> {
   data: Box<[u8]>,
-  height: usize,
-  width: usize,
 }
 
-impl FrameFormat for RgbNchwFrame {
+impl<const W: u32, const H: u32> FrameFormat for RgbNchwFrame<W, H> {
   fn tensor_format(&self) -> rknpu::TensorFormat {
     rknpu::TensorFormat::NCHW
   }
@@ -33,23 +31,21 @@ impl FrameFormat for RgbNchwFrame {
   }
 }
 
-impl RgbNchwFrame {
-  pub fn with_shape(height: usize, width: usize) -> Self {
-    let size = RGB_CHANNELS * height * width;
+impl<const W: u32, const H: u32> RgbNchwFrame<W, H> {
+  pub fn with_shape() -> Self {
+    let size = RGB_CHANNELS * (W as usize) * (H as usize);
     let data = vec![0u8; size].into_boxed_slice();
     Self {
       data,
-      height,
-      width,
     }
   }
 
   pub fn height(&self) -> usize {
-    self.height
+    H as usize
   }
 
   pub fn width(&self) -> usize {
-    self.width
+    W as usize
   }
 
   pub fn channels(&self) -> usize {
@@ -57,25 +53,23 @@ impl RgbNchwFrame {
   }
 }
 
-impl AsMut<[u8]> for RgbNchwFrame {
+impl<const W: u32, const H: u32> AsMut<[u8]> for RgbNchwFrame<W, H> {
   fn as_mut(&mut self) -> &mut [u8] {
     &mut self.data
   }
 }
 
-impl AsNchwFrame for RgbNchwFrame {
+impl<const W: u32, const H: u32> AsNchwFrame for RgbNchwFrame<W, H> {
   fn as_nchw(&self) -> &[u8] {
     &self.data
   }
 }
 
-pub struct RgbNhwcFrame {
+pub struct RgbNhwcFrame<const W: u32, const H: u32> {
   data: Box<[u8]>,
-  height: usize,
-  width: usize,
 }
 
-impl FrameFormat for RgbNhwcFrame {
+impl<const W: u32, const H: u32> FrameFormat for RgbNhwcFrame<W, H> {
   fn tensor_format(&self) -> rknpu::TensorFormat {
     rknpu::TensorFormat::NHWC
   }
@@ -85,23 +79,21 @@ impl FrameFormat for RgbNhwcFrame {
   }
 }
 
-impl RgbNhwcFrame {
-  pub fn with_shape(height: usize, width: usize) -> Self {
-    let size = RGB_CHANNELS * height * width;
+impl<const W: u32, const H: u32> RgbNhwcFrame<W, H> {
+  pub fn with_shape() -> Self {
+    let size = RGB_CHANNELS * (W as usize) * (H as usize);
     let data = vec![0u8; size].into_boxed_slice();
     Self {
       data,
-      height,
-      width,
     }
   }
 
   pub fn height(&self) -> usize {
-    self.height
+    H as usize
   }
 
   pub fn width(&self) -> usize {
-    self.width
+    W as usize
   }
 
   pub fn channels(&self) -> usize {
@@ -109,13 +101,13 @@ impl RgbNhwcFrame {
   }
 }
 
-impl AsMut<[u8]> for RgbNhwcFrame {
+impl<const W: u32, const H: u32> AsMut<[u8]> for RgbNhwcFrame<W, H> {
   fn as_mut(&mut self) -> &mut [u8] {
     &mut self.data
   }
 }
 
-impl AsNhwcFrame for RgbNhwcFrame {
+impl<const W: u32, const H: u32> AsNhwcFrame for RgbNhwcFrame<W, H> {
   fn as_nhwc(&self) -> &[u8] {
     &self.data
   }

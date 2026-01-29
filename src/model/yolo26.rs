@@ -22,13 +22,11 @@ use crate::{
 const YOLO26_NUM_INPUTS: u32 = 1;
 const YOLO26_NUM_OUTPUTS: u32 = 6;
 const YOLO26_CLASS_NUM: usize = 80;
-const YOLO26_INPUT_W: f32 = 640.0;
-const YOLO26_INPUT_H: f32 = 640.0;
 const YOLO26_HEAD_SIZES: [(usize, usize); 3] = [(80, 80), (40, 40), (20, 20)];
 const YOLO26_STRIDES: [f32; 3] = [8.0, 16.0, 32.0];
 const YOLO26_OBJECT_THRESH: f32 = 0.5;
 
-pub struct Yolo26<Frame, T> {
+pub struct Yolo26<const W: u32, const H: u32, Frame, T> {
   context: Context,
   _phantom: std::marker::PhantomData<(Frame, T)>,
 }
@@ -94,7 +92,7 @@ impl Yolo26Builder {
     self
   }
 
-  pub fn build<Frame, T>(self) -> Result<Yolo26<Frame, T>, Yolo26Error> {
+  pub fn build<const W: u32, const H: u32, Frame, T>(self) -> Result<Yolo26<W, H, Frame, T>, Yolo26Error> {
     info!("加载模型文件: {}", self.model_path);
     let mode_data = std::fs::read(&self.model_path)?;
     debug!(
@@ -200,7 +198,7 @@ fn match_reg_cls_tensors<'a>(
   }
 }
 
-impl<Frame: AsNhwcFrame, T: WithLabel> Model for Yolo26<Frame, T> {
+impl<const W: u32, const H: u32, Frame: AsNhwcFrame, T: WithLabel> Model for Yolo26<W, H, Frame, T> {
   // type Input = RgbNchwFrame; // 输入为 NCHW 格式的字节数组
   type Input = Frame;
   type Output = DetectResult<T>; // 输出为浮点数组
@@ -317,20 +315,20 @@ impl<Frame: AsNhwcFrame, T: WithLabel> Model for Yolo26<Frame, T> {
           let grid_x = (w as f32) + 0.5;
           let grid_y = (h as f32) + 0.5;
 
-          let xmin = ((grid_x - cx) * stride).clamp(0.0, YOLO26_INPUT_W);
-          let ymin = ((grid_y - cy) * stride).clamp(0.0, YOLO26_INPUT_H);
-          let xmax = ((grid_x + cw) * stride).clamp(0.0, YOLO26_INPUT_W);
-          let ymax = ((grid_y + ch) * stride).clamp(0.0, YOLO26_INPUT_H);
+          let xmin = ((grid_x - cx) * stride).clamp(0.0, W as f32);
+          let ymin = ((grid_y - cy) * stride).clamp(0.0, H as f32);
+          let xmax = ((grid_x + cw) * stride).clamp(0.0, W as f32);
+          let ymax = ((grid_y + ch) * stride).clamp(0.0, H as f32);
 
-          if xmin >= 0.0 && ymin >= 0.0 && xmax <= YOLO26_INPUT_W && ymax <= YOLO26_INPUT_H {
+          if xmin >= 0.0 && ymin >= 0.0 && xmax <= W as f32 && ymax <= H as f32 {
             items.push(DetectItem {
               kind: T::from_label_id(class_id),
               score,
               bbox: [
-                xmin / YOLO26_INPUT_W,
-                ymin / YOLO26_INPUT_H,
-                xmax / YOLO26_INPUT_W,
-                ymax / YOLO26_INPUT_H,
+                xmin / W as f32,
+                ymin / H as f32,
+                xmax / W as f32,
+                ymax / H as f32,
               ],
             });
           }
