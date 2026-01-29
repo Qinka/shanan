@@ -8,11 +8,11 @@
 //
 // Copyright (C) 2026 Johann Li <me@qinka.pro>, ETVP
 
-pub trait AsNchwFrame {
+pub trait AsNchwFrame<const W: u32, const H: u32> {
   fn as_nchw(&self) -> &[u8];
 }
 
-pub trait AsNhwcFrame {
+pub trait AsNhwcFrame<const W: u32, const H: u32> {
   fn as_nhwc(&self) -> &[u8];
 }
 

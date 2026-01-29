@@ -8,12 +8,10 @@
 //
 // Copyright (C) 2026 Johann Li <me@qinka.pro>, ETVP
 
-
 use shanan_macro::toml_label;
 
 #[toml_label(file = "labels/coco.toml")]
 pub enum CocoLabel {}
-
 
 pub trait Model {
   type Input;

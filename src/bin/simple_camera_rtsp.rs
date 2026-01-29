@@ -48,7 +48,8 @@ fn main() -> Result<()> {
   info!("输入来源: {}", args.input);
   info!("输出路径: {}", args.output);
 
-  let input_image = shanan::input::GStreamerInputPipelineBuilder::from_url(&args.input)?.build()?;
+  let input_image =
+    shanan::input::GStreamerInputPipelineBuilder::<640, 640>::from_url(&args.input)?.build()?;
   let model = shanan::model::Yolo26Builder::from_url(&args.model)?.build()?;
   let output = shanan::output::GStreamerRtspOutput::from_url(&args.output)?;
 

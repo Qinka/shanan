@@ -31,14 +31,15 @@ impl<const W: u32, const H: u32> FrameFormat for RgbNchwFrame<W, H> {
   }
 }
 
-impl<const W: u32, const H: u32> RgbNchwFrame<W, H> {
-  pub fn with_shape() -> Self {
+impl<const W: u32, const H: u32> Default for RgbNchwFrame<W, H> {
+  fn default() -> Self {
     let size = RGB_CHANNELS * (W as usize) * (H as usize);
     let data = vec![0u8; size].into_boxed_slice();
-    Self {
-      data,
-    }
+    Self { data }
   }
+}
+
+impl<const W: u32, const H: u32> RgbNchwFrame<W, H> {
 
   pub fn height(&self) -> usize {
     H as usize
@@ -59,7 +60,7 @@ impl<const W: u32, const H: u32> AsMut<[u8]> for RgbNchwFrame<W, H> {
   }
 }
 
-impl<const W: u32, const H: u32> AsNchwFrame for RgbNchwFrame<W, H> {
+impl<const W: u32, const H: u32> AsNchwFrame<W, H> for RgbNchwFrame<W, H> {
   fn as_nchw(&self) -> &[u8] {
     &self.data
   }
@@ -79,14 +80,15 @@ impl<const W: u32, const H: u32> FrameFormat for RgbNhwcFrame<W, H> {
   }
 }
 
-impl<const W: u32, const H: u32> RgbNhwcFrame<W, H> {
-  pub fn with_shape() -> Self {
+impl<const W: u32, const H: u32> Default for RgbNhwcFrame<W, H> {
+  fn default() -> Self {
     let size = RGB_CHANNELS * (W as usize) * (H as usize);
     let data = vec![0u8; size].into_boxed_slice();
-    Self {
-      data,
-    }
+    Self { data }
   }
+}
+
+impl<const W: u32, const H: u32> RgbNhwcFrame<W, H> {
 
   pub fn height(&self) -> usize {
     H as usize
@@ -107,7 +109,7 @@ impl<const W: u32, const H: u32> AsMut<[u8]> for RgbNhwcFrame<W, H> {
   }
 }
 
-impl<const W: u32, const H: u32> AsNhwcFrame for RgbNhwcFrame<W, H> {
+impl<const W: u32, const H: u32> AsNhwcFrame<W, H> for RgbNhwcFrame<W, H> {
   fn as_nhwc(&self) -> &[u8] {
     &self.data
   }

@@ -137,16 +137,14 @@ const GSTREAMER_VIDEO_OUTPUT_SCHEME: &str = "gst";
 /// # Ok(())
 /// # }
 /// ```
-pub struct GStreamerVideoOutput {
+pub struct GStreamerVideoOutput<const W: u32, const H: u32> {
   pipeline: gst::Pipeline,
   appsrc: gst_app::AppSrc,
-  _width: usize,
-  _height: usize,
   fps: i32,
   frame_count: Arc<Mutex<u64>>,
 }
 
-impl FromUrl for GStreamerVideoOutput {
+impl<const W: u32, const H: u32> FromUrl for GStreamerVideoOutput<W, H> {
   type Error = GStreamerVideoOutputError;
 
   fn from_url(url: &Url) -> Result<Self, Self::Error> {
@@ -164,14 +162,6 @@ impl FromUrl for GStreamerVideoOutput {
 
     // Parse query parameters for width, height, fps
     let query_pairs: std::collections::HashMap<_, _> = url.query_pairs().collect();
-    let width: usize = query_pairs
-      .get("width")
-      .and_then(|v| v.parse().ok())
-      .unwrap_or(640);
-    let height: usize = query_pairs
-      .get("height")
-      .and_then(|v| v.parse().ok())
-      .unwrap_or(480);
     let fps: i32 = query_pairs
       .get("fps")
       .and_then(|v| v.parse().ok())
@@ -228,8 +218,8 @@ impl FromUrl for GStreamerVideoOutput {
     // Configure appsrc
     let caps = gst::Caps::builder("video/x-raw")
       .field("format", "RGB")
-      .field("width", width as i32)
-      .field("height", height as i32)
+      .field("width", W as i32)
+      .field("height", H as i32)
       .field("framerate", gst::Fraction::new(fps, 1))
       .build();
 
@@ -241,21 +231,19 @@ impl FromUrl for GStreamerVideoOutput {
 
     info!(
       "Video output initialized: {}x{} @ {} fps -> {}",
-      width, height, fps, file_path
+      W, H, fps, file_path
     );
 
     Ok(GStreamerVideoOutput {
       pipeline,
       appsrc,
-      _width: width,
-      _height: height,
       fps,
       frame_count: Arc::new(Mutex::new(0)),
     })
   }
 }
 
-impl Drop for GStreamerVideoOutput {
+impl<const W: u32, const H: u32> Drop for GStreamerVideoOutput<W, H> {
   fn drop(&mut self) {
     // Send EOS to properly close the file
     let _ = self.appsrc.end_of_stream();
@@ -275,7 +263,7 @@ impl Drop for GStreamerVideoOutput {
   }
 }
 
-impl GStreamerVideoOutput {
+impl<const W: u32, const H: u32> GStreamerVideoOutput<W, H> {
   fn push_frame(&self, data: &[u8]) -> Result<(), GStreamerVideoOutputError> {
     let size = data.len();
     let mut buffer =
@@ -310,12 +298,14 @@ impl GStreamerVideoOutput {
   }
 }
 
-impl<T: WithLabel> Render<RgbNchwFrame, DetectResult<T>> for GStreamerVideoOutput {
+impl<const W: u32, const H: u32, T: WithLabel> Render<RgbNchwFrame<W, H>, DetectResult<T>>
+  for GStreamerVideoOutput<W, H>
+{
   type Error = GStreamerVideoOutputError;
 
   fn render_result(
     &self,
-    frame: &RgbNchwFrame,
+    frame: &RgbNchwFrame<W, H>,
     _result: &DetectResult<T>,
   ) -> Result<(), Self::Error> {
     let width = frame.width();
@@ -338,12 +328,14 @@ impl<T: WithLabel> Render<RgbNchwFrame, DetectResult<T>> for GStreamerVideoOutpu
   }
 }
 
-impl<T: WithLabel> Render<RgbNhwcFrame, DetectResult<T>> for GStreamerVideoOutput {
+impl<const W: u32, const H: u32, T: WithLabel> Render<RgbNhwcFrame<W, H>, DetectResult<T>>
+  for GStreamerVideoOutput<W, H>
+{
   type Error = GStreamerVideoOutputError;
 
   fn render_result(
     &self,
-    frame: &RgbNhwcFrame,
+    frame: &RgbNhwcFrame<W, H>,
     _result: &DetectResult<T>,
   ) -> Result<(), Self::Error> {
     let data = frame.as_nhwc();

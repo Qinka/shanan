@@ -257,11 +257,11 @@ impl GStreamerInputBuilderItem {
 /// # Ok(())
 /// # }
 /// ```
-pub struct GStreamerInputPipelineBuilder {
+pub struct GStreamerInputPipelineBuilder<const W: u32, const H: u32> {
   items: Vec<GStreamerInputBuilderItem>,
 }
 
-impl GStreamerInputPipelineBuilder {
+impl<const W: u32, const H: u32> GStreamerInputPipelineBuilder<W, H> {
   fn build_video_pipline(
     path: &str,
     query: &HashMap<String, String>,
@@ -275,11 +275,11 @@ impl GStreamerInputPipelineBuilder {
     let width = query
       .get("width")
       .and_then(|v| v.parse::<u32>().ok())
-      .unwrap_or(640);
+      .unwrap_or(W);
     let height = query
       .get("height")
       .and_then(|v| v.parse::<u32>().ok())
-      .unwrap_or(640);
+      .unwrap_or(H);
     let framerate_num = query
       .get("framerate")
       .and_then(|v| v.parse::<u32>().ok())
@@ -294,7 +294,7 @@ impl GStreamerInputPipelineBuilder {
       height,
       framerate_num,
     });
-    items.push(GStreamerInputBuilderItem::AspectRatio { ratio: (1, 1) });
+    items.push(GStreamerInputBuilderItem::AspectRatio { ratio: (W, H) });
 
     if let Some(video_flip) = Self::video_flip(query.get("rotate").map(|s| s.as_ref())) {
       items.push(video_flip);
@@ -309,7 +309,7 @@ impl GStreamerInputPipelineBuilder {
   ) -> Result<Self, GStreamerInputError> {
     let mut items = Vec::new();
     items.push(GStreamerInputBuilderItem::FileSource(path.to_string()));
-    items.push(GStreamerInputBuilderItem::AspectRatio { ratio: (1, 1) });
+    items.push(GStreamerInputBuilderItem::AspectRatio { ratio: (W, H) });
 
     if let Some(video_flip) = Self::video_flip(query.get("rotate").map(|s| s.as_ref())) {
       items.push(video_flip);
@@ -333,7 +333,7 @@ impl GStreamerInputPipelineBuilder {
     }
   }
 
-  pub fn build(self) -> Result<GStreamerInput, GStreamerInputError> {
+  pub fn build(self) -> Result<GStreamerInput<W, H>, GStreamerInputError> {
     gst::init()?;
 
     let basic_pipeline = self
@@ -365,7 +365,7 @@ impl GStreamerInputPipelineBuilder {
   }
 }
 
-impl FromUrl for GStreamerInputPipelineBuilder {
+impl<const W: u32, const H: u32> FromUrl for GStreamerInputPipelineBuilder<W, H> {
   type Error = GStreamerInputError;
 
   fn from_url(url: &Url) -> Result<Self, Self::Error> {
@@ -415,12 +415,12 @@ impl FromUrl for GStreamerInputPipelineBuilder {
 /// # Ok(())
 /// # }
 /// ```
-pub struct GStreamerInput {
+pub struct GStreamerInput<const W: u32, const H: u32> {
   pipeline: gst::Pipeline,
   appsink: gst_app::AppSink,
 }
 
-impl Drop for GStreamerInput {
+impl<const W: u32, const H: u32> Drop for GStreamerInput<W, H> {
   fn drop(&mut self) {
     if let Err(e) = self.pipeline.set_state(gst::State::Null) {
       tracing::warn!("Failed to stop GStreamer pipeline: {}", e);
@@ -428,12 +428,12 @@ impl Drop for GStreamerInput {
   }
 }
 
-impl GStreamerInput {
-  pub fn into_nchw(self) -> GStreamerInputNchw {
+impl<const W: u32, const H: u32> GStreamerInput<W, H> {
+  pub fn into_nchw(self) -> GStreamerInputNchw<W, H> {
     GStreamerInputNchw { inner: self }
   }
 
-  pub fn into_nhwc(self) -> GStreamerInputNhwc {
+  pub fn into_nhwc(self) -> GStreamerInputNhwc<W, H> {
     GStreamerInputNhwc { inner: self }
   }
 
@@ -452,12 +452,12 @@ impl GStreamerInput {
 /// GStreamer 输入的 NCHW 格式迭代器
 ///
 /// 将视频帧转换为 NCHW 格式（Channels × Height × Width）。
-pub struct GStreamerInputNchw {
-  inner: GStreamerInput,
+pub struct GStreamerInputNchw<const W: u32, const H: u32> {
+  inner: GStreamerInput<W, H>,
 }
 
-impl Iterator for GStreamerInputNchw {
-  type Item = RgbNchwFrame;
+impl<const W: u32, const H: u32> Iterator for GStreamerInputNchw<W, H> {
+  type Item = RgbNchwFrame<W, H>;
 
   fn next(&mut self) -> Option<Self::Item> {
     let sample = self.inner.pull_sample()?;
@@ -473,12 +473,12 @@ impl Iterator for GStreamerInputNchw {
 /// GStreamer 输入的 NHWC 格式迭代器
 ///
 /// 将视频帧转换为 NHWC 格式（Height × Width × Channels）。
-pub struct GStreamerInputNhwc {
-  inner: GStreamerInput,
+pub struct GStreamerInputNhwc<const W: u32, const H: u32> {
+  inner: GStreamerInput<W, H>,
 }
 
-impl Iterator for GStreamerInputNhwc {
-  type Item = RgbNhwcFrame;
+impl<const W: u32, const H: u32> Iterator for GStreamerInputNhwc<W, H> {
+  type Item = RgbNhwcFrame<W, H>;
 
   fn next(&mut self) -> Option<Self::Item> {
     let sample = self.inner.pull_sample()?;
@@ -491,7 +491,9 @@ impl Iterator for GStreamerInputNhwc {
   }
 }
 
-fn convert_sample_to_nchw(sample: gst::Sample) -> Result<RgbNchwFrame, GStreamerInputError> {
+fn convert_sample_to_nchw<const W: u32, const H: u32>(
+  sample: gst::Sample,
+) -> Result<RgbNchwFrame<W, H>, GStreamerInputError> {
   let buffer = sample
     .buffer()
     .ok_or_else(|| GStreamerInputError::PipelineError("No buffer in sample".to_string()))?;
@@ -520,7 +522,7 @@ fn convert_sample_to_nchw(sample: gst::Sample) -> Result<RgbNchwFrame, GStreamer
     });
   }
 
-  let mut frame = RgbNchwFrame::with_shape(height, width);
+  let mut frame = RgbNchwFrame::<W, H>::default();
   let frame_slice = frame.as_mut();
 
   // Convert from whatever format to RGB NCHW
@@ -556,7 +558,9 @@ fn convert_sample_to_nchw(sample: gst::Sample) -> Result<RgbNchwFrame, GStreamer
   Ok(frame)
 }
 
-fn convert_sample_to_nhwc(sample: gst::Sample) -> Result<RgbNhwcFrame, GStreamerInputError> {
+fn convert_sample_to_nhwc<const W: u32, const H: u32>(
+  sample: gst::Sample,
+) -> Result<RgbNhwcFrame<W, H>, GStreamerInputError> {
   let buffer = sample
     .buffer()
     .ok_or_else(|| GStreamerInputError::PipelineError("No buffer in sample".to_string()))?;
@@ -585,7 +589,7 @@ fn convert_sample_to_nhwc(sample: gst::Sample) -> Result<RgbNhwcFrame, GStreamer
     });
   }
 
-  let mut frame = RgbNhwcFrame::with_shape(height, width);
+  let mut frame = RgbNhwcFrame::<W, H>::default();
   let frame_slice = frame.as_mut();
 
   // Convert from whatever format to RGB NHWC

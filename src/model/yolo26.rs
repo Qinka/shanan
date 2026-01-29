@@ -92,7 +92,9 @@ impl Yolo26Builder {
     self
   }
 
-  pub fn build<const W: u32, const H: u32, Frame, T>(self) -> Result<Yolo26<W, H, Frame, T>, Yolo26Error> {
+  pub fn build<const W: u32, const H: u32, Frame, T>(
+    self,
+  ) -> Result<Yolo26<W, H, Frame, T>, Yolo26Error> {
     info!("加载模型文件: {}", self.model_path);
     let mode_data = std::fs::read(&self.model_path)?;
     debug!(
@@ -198,7 +200,9 @@ fn match_reg_cls_tensors<'a>(
   }
 }
 
-impl<const W: u32, const H: u32, Frame: AsNhwcFrame, T: WithLabel> Model for Yolo26<W, H, Frame, T> {
+impl<const W: u32, const H: u32, Frame: AsNhwcFrame<H, W>, T: WithLabel> Model
+  for Yolo26<W, H, Frame, T>
+{
   // type Input = RgbNchwFrame; // 输入为 NCHW 格式的字节数组
   type Input = Frame;
   type Output = DetectResult<T>; // 输出为浮点数组

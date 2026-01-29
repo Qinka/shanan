@@ -42,11 +42,11 @@ impl From<image::ImageError> for ImageFileInputError {
 
 const READ_IMAGE_FILE_SCHEME: &str = "image";
 
-pub struct ImageFileInput {
+pub struct ImageFileInput<const W: u32, const H: u32> {
   image: Option<RgbImage>,
 }
 
-impl FromUrl for ImageFileInput {
+impl<const W: u32, const H: u32> FromUrl for ImageFileInput<W, H> {
   type Error = ImageFileInputError;
 
   fn from_url(url: &Url) -> Result<Self, Self::Error> {
@@ -68,33 +68,33 @@ impl FromUrl for ImageFileInput {
   }
 }
 
-impl ImageFileInput {
-  pub fn into_nchw(self) -> ImageFileInputNchw {
+impl<const W: u32, const H: u32> ImageFileInput<W, H> {
+  pub fn into_nchw(self) -> ImageFileInputNchw<W, H> {
     ImageFileInputNchw { inner: self }
   }
 
-  pub fn into_nhwc(self) -> ImageFileInputNhwc {
+  pub fn into_nhwc(self) -> ImageFileInputNhwc<W, H> {
     ImageFileInputNhwc { inner: self }
   }
 }
 
-pub struct ImageFileInputNchw {
-  inner: ImageFileInput,
+pub struct ImageFileInputNchw<const W: u32, const H: u32> {
+  inner: ImageFileInput<W, H>,
 }
 
-impl Iterator for ImageFileInputNchw {
-  type Item = RgbNchwFrame;
+impl<const W: u32, const H: u32> Iterator for ImageFileInputNchw<W, H> {
+  type Item = RgbNchwFrame<W, H>;
 
   fn next(&mut self) -> Option<Self::Item> {
     self.inner.image.take().map(RgbNchwFrame::from)
   }
 }
 
-impl From<RgbImage> for RgbNchwFrame {
+impl<const W: u32, const H: u32> From<RgbImage> for RgbNchwFrame<W, H> {
   fn from(image: RgbImage) -> Self {
-    let mut frame = {
-      let (width, height) = image.dimensions();
-      RgbNchwFrame::with_shape(height as usize, width as usize)
+    let (mut frame, image) = {
+      let image = image::imageops::resize(&image, W, H, image::imageops::FilterType::Nearest);
+      (RgbNchwFrame::<W, H>::default(), image)
     };
 
     let channels = frame.channels() as u32;
@@ -118,23 +118,23 @@ impl From<RgbImage> for RgbNchwFrame {
   }
 }
 
-pub struct ImageFileInputNhwc {
-  inner: ImageFileInput,
+pub struct ImageFileInputNhwc<const W: u32, const H: u32> {
+  inner: ImageFileInput<W, H>,
 }
 
-impl Iterator for ImageFileInputNhwc {
-  type Item = RgbNhwcFrame;
+impl<const W: u32, const H: u32> Iterator for ImageFileInputNhwc<W, H> {
+  type Item = RgbNhwcFrame<W, H>;
 
   fn next(&mut self) -> Option<Self::Item> {
     self.inner.image.take().map(RgbNhwcFrame::from)
   }
 }
 
-impl From<RgbImage> for RgbNhwcFrame {
+impl<const W: u32, const H: u32> From<RgbImage> for RgbNhwcFrame<W, H> {
   fn from(image: RgbImage) -> Self {
-    let mut frame = {
-      let (width, height) = image.dimensions();
-      RgbNhwcFrame::with_shape(height as usize, width as usize)
+    let (mut frame, image) = {
+      let image = image::imageops::resize(&image, W, H, image::imageops::FilterType::Nearest);
+      (RgbNhwcFrame::<W, H>::default(), image)
     };
 
     let channels = frame.channels() as u32;

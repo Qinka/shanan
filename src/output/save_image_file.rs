@@ -25,90 +25,6 @@ use crate::{
   output::Render,
 };
 
-// // COCO 80 类别名称
-// const COCO_CLASSES: [&str; 80] = [
-//   "person",
-//   "bicycle",
-//   "car",
-//   "motorcycle",
-//   "airplane",
-//   "bus",
-//   "train",
-//   "truck",
-//   "boat",
-//   "traffic light",
-//   "fire hydrant",
-//   "stop sign",
-//   "parking meter",
-//   "bench",
-//   "bird",
-//   "cat",
-//   "dog",
-//   "horse",
-//   "sheep",
-//   "cow",
-//   "elephant",
-//   "bear",
-//   "zebra",
-//   "giraffe",
-//   "backpack",
-//   "umbrella",
-//   "handbag",
-//   "tie",
-//   "suitcase",
-//   "frisbee",
-//   "skis",
-//   "snowboard",
-//   "sports ball",
-//   "kite",
-//   "baseball bat",
-//   "baseball glove",
-//   "skateboard",
-//   "surfboard",
-//   "tennis racket",
-//   "bottle",
-//   "wine glass",
-//   "cup",
-//   "fork",
-//   "knife",
-//   "spoon",
-//   "bowl",
-//   "banana",
-//   "apple",
-//   "sandwich",
-//   "orange",
-//   "broccoli",
-//   "carrot",
-//   "hot dog",
-//   "pizza",
-//   "donut",
-//   "cake",
-//   "chair",
-//   "couch",
-//   "potted plant",
-//   "bed",
-//   "dining table",
-//   "toilet",
-//   "tv",
-//   "laptop",
-//   "mouse",
-//   "remote",
-//   "keyboard",
-//   "cell phone",
-//   "microwave",
-//   "oven",
-//   "toaster",
-//   "sink",
-//   "refrigerator",
-//   "book",
-//   "clock",
-//   "vase",
-//   "scissors",
-//   "teddy bear",
-//   "hair drier",
-//   "toothbrush",
-// ];
-
 // 文本渲染常量
 const LABEL_FONT_SIZE: f32 = 20.0;
 const LABEL_TEXT_HEIGHT: i32 = 24;
@@ -212,7 +128,7 @@ fn draw_bbox_with_label<T: WithLabel>(
   }
 }
 
-pub struct SaveImageFileOutput {
+pub struct SaveImageFileOutput<const W: u32, const H: u32> {
   path: String,
 }
 
@@ -228,7 +144,7 @@ pub enum SaveImageFileError {
 
 const SAVE_IMAGE_FILE_SCHEME: &str = "image";
 
-impl FromUrl for SaveImageFileOutput {
+impl<const W: u32, const H: u32> FromUrl for SaveImageFileOutput<W, H> {
   type Error = SaveImageFileError;
 
   fn from_url(uri: &Url) -> Result<Self, Self::Error> {
@@ -246,7 +162,7 @@ impl FromUrl for SaveImageFileOutput {
   }
 }
 
-impl SaveImageFileOutput {
+impl<const W: u32, const H: u32> SaveImageFileOutput<W, H> {
   fn render_detect_result<T: WithLabel>(
     &self,
     mut image: RgbImage,
@@ -284,12 +200,14 @@ impl SaveImageFileOutput {
   }
 }
 
-impl<T: WithLabel> Render<RgbNchwFrame, DetectResult<T>> for SaveImageFileOutput {
+impl<const W: u32, const H: u32, T: WithLabel> Render<RgbNchwFrame<W, H>, DetectResult<T>>
+  for SaveImageFileOutput<W, H>
+{
   type Error = SaveImageFileError;
 
   fn render_result(
     &self,
-    frame: &RgbNchwFrame,
+    frame: &RgbNchwFrame<W, H>,
     result: &DetectResult<T>,
   ) -> Result<(), Self::Error> {
     let width = frame.width() as u32;
@@ -311,12 +229,14 @@ impl<T: WithLabel> Render<RgbNchwFrame, DetectResult<T>> for SaveImageFileOutput
   }
 }
 
-impl<T: WithLabel> Render<RgbNhwcFrame, DetectResult<T>> for SaveImageFileOutput {
+impl<const W: u32, const H: u32, T: WithLabel> Render<RgbNhwcFrame<W, H>, DetectResult<T>>
+  for SaveImageFileOutput<W, H>
+{
   type Error = SaveImageFileError;
 
   fn render_result(
     &self,
-    frame: &RgbNhwcFrame,
+    frame: &RgbNhwcFrame<W, H>,
     result: &DetectResult<T>,
   ) -> Result<(), Self::Error> {
     let width = frame.width() as u32;

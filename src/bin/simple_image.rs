@@ -43,7 +43,7 @@ fn main() -> Result<()> {
   info!("输入来源: {}", args.input);
   info!("输出路径: {}", args.output);
 
-  let input_image = shanan::input::ImageFileInput::from_url(&args.input)?;
+  let input_image = shanan::input::ImageFileInput::<640, 640>::from_url(&args.input)?;
   let model = shanan::model::Yolo26Builder::from_url(&args.model)?.build()?;
   let output = shanan::output::SaveImageFileOutput::from_url(&args.output)?;
 
