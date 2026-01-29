@@ -101,7 +101,6 @@ use thiserror::Error;
 use tracing::{error, info};
 use url::Url;
 
-#[derive(Error, Debug)]
 /// GStreamer RTSP 输出错误类型
 #[derive(Error, Debug)]
 pub enum GStreamerRtspOutputError {
@@ -192,6 +191,10 @@ impl FromUrl for GStreamerRtspOutput {
       .get("port")
       .and_then(|v| v.parse().ok())
       .unwrap_or(8554);
+    let proto = query_pairs
+      .get("proto")
+      .map(|v| v.as_ref())
+      .unwrap_or("udp");
 
     // Get the host and stream path
     let host = url.host_str().unwrap_or("0.0.0.0");
@@ -202,10 +205,9 @@ impl FromUrl for GStreamerRtspOutput {
     // For a full RTSP server, you would need gst-rtsp-server library
     let pipeline_desc = format!(
       "appsrc name=src ! videoconvert ! video/x-raw,format=I420 ! \
-       x264enc speed-preset=ultrafast tune=zerolatency bitrate=2000 ! \
-       h264parse ! rtph264pay config-interval=1 pt=96 ! \
-       udpsink host={} port={}",
-      host, port
+       mpph264enc ! \
+       rtspclientsink protocols={} latency=0 location=rtsp://{}:{}{}",
+      proto, host, port, stream_path
     );
 
     info!("Creating RTSP output pipeline: {}", pipeline_desc);
