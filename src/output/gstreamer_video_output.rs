@@ -20,7 +20,6 @@ use crate::{
 
 use gstreamer::{self as gst, prelude::*};
 use gstreamer_app as gst_app;
-use gstreamer_video as gst_video;
 use thiserror::Error;
 use tracing::{error, info};
 use url::Url;
@@ -45,13 +44,13 @@ pub enum GStreamerVideoOutputError {
   BufferCreationError,
 }
 
-const GSTREAMER_VIDEO_OUTPUT_SCHEME: &str = "gstvideo";
+const GSTREAMER_VIDEO_OUTPUT_SCHEME: &str = "gst";
 
 pub struct GStreamerVideoOutput {
   pipeline: gst::Pipeline,
   appsrc: gst_app::AppSrc,
-  width: usize,
-  height: usize,
+  _width: usize,
+  _height: usize,
   fps: i32,
   frame_count: Arc<Mutex<u64>>,
 }
@@ -157,8 +156,8 @@ impl FromUrl for GStreamerVideoOutput {
     Ok(GStreamerVideoOutput {
       pipeline,
       appsrc,
-      width,
-      height,
+      _width: width,
+      _height: height,
       fps,
       frame_count: Arc::new(Mutex::new(0)),
     })
@@ -169,24 +168,27 @@ impl Drop for GStreamerVideoOutput {
   fn drop(&mut self) {
     // Send EOS to properly close the file
     let _ = self.appsrc.end_of_stream();
-    
+
     // Wait a bit for EOS to be processed
     std::thread::sleep(std::time::Duration::from_millis(100));
-    
+
     if let Err(e) = self.pipeline.set_state(gst::State::Null) {
       tracing::warn!("Failed to stop GStreamer video output pipeline: {}", e);
     }
-    
+
     let frame_count = self.frame_count.lock().unwrap();
-    info!("Video output closed. Total frames written: {}", *frame_count);
+    info!(
+      "Video output closed. Total frames written: {}",
+      *frame_count
+    );
   }
 }
 
 impl GStreamerVideoOutput {
   fn push_frame(&self, data: &[u8]) -> Result<(), GStreamerVideoOutputError> {
     let size = data.len();
-    let mut buffer = gst::Buffer::with_size(size)
-      .map_err(|_| GStreamerVideoOutputError::BufferCreationError)?;
+    let mut buffer =
+      gst::Buffer::with_size(size).map_err(|_| GStreamerVideoOutputError::BufferCreationError)?;
 
     {
       let buffer_ref = buffer.get_mut().unwrap();
@@ -204,13 +206,14 @@ impl GStreamerVideoOutput {
     {
       let buffer_ref = buffer.get_mut().unwrap();
       buffer_ref.set_pts(gst::ClockTime::from_nseconds(timestamp));
-      buffer_ref.set_duration(gst::ClockTime::from_nseconds(1_000_000_000 / self.fps as u64));
+      buffer_ref.set_duration(gst::ClockTime::from_nseconds(
+        1_000_000_000 / self.fps as u64,
+      ));
     }
 
-    self
-      .appsrc
-      .push_buffer(buffer)
-      .map_err(|e| GStreamerVideoOutputError::PipelineError(format!("Failed to push buffer: {:?}", e)))?;
+    self.appsrc.push_buffer(buffer).map_err(|e| {
+      GStreamerVideoOutputError::PipelineError(format!("Failed to push buffer: {:?}", e))
+    })?;
 
     Ok(())
   }

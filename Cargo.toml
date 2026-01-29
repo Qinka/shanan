@@ -37,7 +37,7 @@ urlencoding = "2.1.3"
 
 [features]
 
-default = ["read_image_file", "save_image_file", "gstreamer_input"]
+default = ["read_image_file", "save_image_file", "gstreamer_input", "gstreamer_output"]
 
 read_image_file = ["image"]
 gstreamer_input = ["gstreamer", "gstreamer-app", "gstreamer-video"]
