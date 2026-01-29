@@ -8,6 +8,8 @@
 //
 // Copyright (C) 2026 Johann Li <me@qinka.pro>, ETVP
 
+use std::collections::HashMap;
+
 use crate::{
   FromUrl,
   frame::{RgbNchwFrame, RgbNhwcFrame},
@@ -17,7 +19,7 @@ use gstreamer::{self as gst, prelude::*};
 use gstreamer_app as gst_app;
 use gstreamer_video as gst_video;
 use thiserror::Error;
-use tracing::error;
+use tracing::{error, info};
 use url::Url;
 
 #[derive(Error, Debug)]
@@ -40,37 +42,162 @@ pub enum GStreamerInputError {
   PipelineError(String),
   #[error("Buffer size mismatch: expected {expected} bytes, got {actual} bytes")]
   BufferSizeMismatch { expected: usize, actual: usize },
+  #[error("State change error: {0}")]
+  StateChangeError(#[from] gst::StateChangeError),
 }
 
 const GSTREAMER_INPUT_SCHEME: &str = "gst";
 
-pub struct GStreamerInput {
-  pipeline: gst::Pipeline,
-  appsink: gst_app::AppSink,
+pub enum GStreamerInputBuilderItem {
+  FileSource(String),
+  CameraSource {
+    camera: String,
+    io_mode: Option<u32>,
+    format: String,
+    width: u32,
+    height: u32,
+    framerate_num: u32,
+  },
+  TargetFormat {
+    format: String,
+  },
+  AspectRatio {
+    ratio: (u32, u32),
+  },
+  VideoFlip {
+    method: u32,
+    direction: u32,
+  },
 }
 
-impl FromUrl for GStreamerInput {
-  type Error = GStreamerInputError;
+impl GStreamerInputBuilderItem {
+  fn to_pipeline(&self) -> String {
+    match self {
+      GStreamerInputBuilderItem::FileSource(path) => {
+        format!("filesrc location={} ! decodebin", path)
+      }
+      GStreamerInputBuilderItem::CameraSource {
+        camera,
+        io_mode,
+        format,
+        width,
+        height,
+        framerate_num,
+      } => {
+        let io_mode_str = if let Some(mode) = io_mode {
+          format!(" io-mode={}", mode)
+        } else {
+          "".to_string()
+        };
+        format!(
+          "v4l2src device={}{} ! video/x-raw,format={},width={},height={},framerate={}/1",
+          camera, io_mode_str, format, width, height, framerate_num
+        )
+      }
+      GStreamerInputBuilderItem::TargetFormat { format } => {
+        format!("videoconvert ! video/x-raw,format={}", format)
+      }
+      GStreamerInputBuilderItem::AspectRatio { ratio } => {
+        format!("aspectratiocrop aspect-ratio={}/{}", ratio.0, ratio.1)
+      }
+      GStreamerInputBuilderItem::VideoFlip { method, direction } => {
+        format!("videoflip method={} video-direction={}", method, direction)
+      }
+    }
+  }
+}
 
-  fn from_url(url: &Url) -> Result<Self, Self::Error> {
-    if url.scheme() != GSTREAMER_INPUT_SCHEME {
-      error!(
-        "URI scheme mismatch: expected '{}', found '{}'",
-        GSTREAMER_INPUT_SCHEME,
-        url.scheme()
-      );
-      return Err(GStreamerInputError::SchemeMismatch);
+pub struct GStreamerInputPipelineBuilder {
+  items: Vec<GStreamerInputBuilderItem>,
+}
+
+impl GStreamerInputPipelineBuilder {
+  fn build_video_pipline(
+    path: &str,
+    query: &HashMap<String, String>,
+  ) -> Result<Self, GStreamerInputError> {
+    let camera = path.to_string();
+    let io_mode = query
+      .get("io-mode")
+      .and_then(|v| v.parse::<u32>().ok());
+    let format = query
+      .get("format")
+      .map(String::from)
+      .unwrap_or(String::from("RGB"));
+    let width = query
+      .get("width")
+      .and_then(|v| v.parse::<u32>().ok())
+      .unwrap_or(640);
+    let height = query
+      .get("height")
+      .and_then(|v| v.parse::<u32>().ok())
+      .unwrap_or(640);
+    let framerate_num = query
+      .get("framerate")
+      .and_then(|v| v.parse::<u32>().ok())
+      .unwrap_or(15);
+
+    let mut items = Vec::new();
+    items.push(GStreamerInputBuilderItem::CameraSource {
+      camera,
+      io_mode,
+      format,
+      width,
+      height,
+      framerate_num,
+    });
+    items.push(GStreamerInputBuilderItem::AspectRatio { ratio: (1, 1) });
+
+    if let Some(video_flip) = Self::video_flip(query.get("rotate").map(|s| s.as_ref())) {
+      items.push(video_flip);
     }
 
-    // Initialize GStreamer (subsequent calls are safe no-ops)
+    Ok(GStreamerInputPipelineBuilder { items })
+  }
+
+  fn build_file_pipeline(
+    path: &str,
+    query: &HashMap<String, String>,
+  ) -> Result<Self, GStreamerInputError> {
+    let mut items = Vec::new();
+    items.push(GStreamerInputBuilderItem::FileSource(path.to_string()));
+    items.push(GStreamerInputBuilderItem::AspectRatio { ratio: (1, 1) });
+
+    if let Some(video_flip) = Self::video_flip(query.get("rotate").map(|s| s.as_ref())) {
+      items.push(video_flip);
+    }
+
+    Ok(GStreamerInputPipelineBuilder { items })
+  }
+
+  fn video_flip(rotate: Option<&str>) -> Option<GStreamerInputBuilderItem> {
+    if let Some(rotate) = rotate {
+      let (method, direction) = match rotate {
+        "0" => (0, 0),
+        "90" => (1, 1),
+        "180" => (2, 2),
+        "270" => (3, 3),
+        _ => (0, 0),
+      };
+      Some(GStreamerInputBuilderItem::VideoFlip { method, direction })
+    } else {
+      None
+    }
+  }
+
+  pub fn build(self) -> Result<GStreamerInput, GStreamerInputError> {
     gst::init()?;
 
-    // Parse the pipeline description from the URL path
-    let pipeline_desc = url.path();
-    
-    // Create a full pipeline description with appsink at the end
-    let full_pipeline = format!("{} ! appsink name=sink", pipeline_desc);
-    
+    let basic_pipeline = self
+      .items
+      .iter()
+      .map(GStreamerInputBuilderItem::to_pipeline)
+      .collect::<Vec<String>>()
+      .join(" ! ");
+    let full_pipeline = format!("{} ! appsink name=sink", basic_pipeline);
+
+    info!("GStreamer pipeline description: {}", full_pipeline);
+
     // Create the pipeline from the description
     let pipeline = gst::parse::launch(&full_pipeline)?
       .downcast::<gst::Pipeline>()
@@ -88,6 +215,41 @@ impl FromUrl for GStreamerInput {
 
     Ok(GStreamerInput { pipeline, appsink })
   }
+}
+
+impl FromUrl for GStreamerInputPipelineBuilder {
+  type Error = GStreamerInputError;
+
+  fn from_url(url: &Url) -> Result<Self, Self::Error> {
+    if url.scheme() != GSTREAMER_INPUT_SCHEME {
+      return Err(GStreamerInputError::SchemeMismatch);
+    }
+
+    let query: HashMap<String, String> = url
+      .query_pairs()
+      .map(|(k, v)| (String::from(k), String::from(v)))
+      .collect();
+
+    // unpack url
+    let mut builder = match url.host_str() {
+      Some("camera") => Self::build_video_pipline(url.path(), &query)?,
+      Some("file") => Self::build_file_pipeline(url.path(), &query)?,
+      _ => {
+        return Err(GStreamerInputError::SchemeMismatch);
+      }
+    };
+
+    builder.items.push(GStreamerInputBuilderItem::TargetFormat {
+      format: "RGB".to_string(),
+    });
+
+    Ok(builder)
+  }
+}
+
+pub struct GStreamerInput {
+  pipeline: gst::Pipeline,
+  appsink: gst_app::AppSink,
 }
 
 impl Drop for GStreamerInput {
@@ -108,7 +270,14 @@ impl GStreamerInput {
   }
 
   fn pull_sample(&self) -> Option<gst::Sample> {
-    self.appsink.pull_sample().ok()
+    self
+      .appsink
+      .pull_sample()
+      .map_err(|e| {
+        error!("Failed to pull sample: {}", e);
+        e
+      })
+      .ok()
   }
 }
 
@@ -121,7 +290,12 @@ impl Iterator for GStreamerInputNchw {
 
   fn next(&mut self) -> Option<Self::Item> {
     let sample = self.inner.pull_sample()?;
-    convert_sample_to_nchw(sample).ok()
+    convert_sample_to_nchw(sample)
+      .map_err(|e| {
+        error!("Failed to fetch sample: {}", e);
+        e
+      })
+      .ok()
   }
 }
 
@@ -134,20 +308,25 @@ impl Iterator for GStreamerInputNhwc {
 
   fn next(&mut self) -> Option<Self::Item> {
     let sample = self.inner.pull_sample()?;
-    convert_sample_to_nhwc(sample).ok()
+    convert_sample_to_nhwc(sample)
+      .map_err(|e| {
+        error!("Failed to fetch sample: {}", e);
+        e
+      })
+      .ok()
   }
 }
 
 fn convert_sample_to_nchw(sample: gst::Sample) -> Result<RgbNchwFrame, GStreamerInputError> {
-  let buffer = sample.buffer().ok_or_else(|| {
-    GStreamerInputError::PipelineError("No buffer in sample".to_string())
-  })?;
-  let caps = sample.caps().ok_or_else(|| {
-    GStreamerInputError::PipelineError("No caps in sample".to_string())
-  })?;
-  
-  let video_info = gst_video::VideoInfo::from_caps(caps)
-    .map_err(|_| GStreamerInputError::VideoInfoError)?;
+  let buffer = sample
+    .buffer()
+    .ok_or_else(|| GStreamerInputError::PipelineError("No buffer in sample".to_string()))?;
+  let caps = sample
+    .caps()
+    .ok_or_else(|| GStreamerInputError::PipelineError("No caps in sample".to_string()))?;
+
+  let video_info =
+    gst_video::VideoInfo::from_caps(caps).map_err(|_| GStreamerInputError::VideoInfoError)?;
 
   let width = video_info.width() as usize;
   let height = video_info.height() as usize;
@@ -204,15 +383,15 @@ fn convert_sample_to_nchw(sample: gst::Sample) -> Result<RgbNchwFrame, GStreamer
 }
 
 fn convert_sample_to_nhwc(sample: gst::Sample) -> Result<RgbNhwcFrame, GStreamerInputError> {
-  let buffer = sample.buffer().ok_or_else(|| {
-    GStreamerInputError::PipelineError("No buffer in sample".to_string())
-  })?;
-  let caps = sample.caps().ok_or_else(|| {
-    GStreamerInputError::PipelineError("No caps in sample".to_string())
-  })?;
-  
-  let video_info = gst_video::VideoInfo::from_caps(caps)
-    .map_err(|_| GStreamerInputError::VideoInfoError)?;
+  let buffer = sample
+    .buffer()
+    .ok_or_else(|| GStreamerInputError::PipelineError("No buffer in sample".to_string()))?;
+  let caps = sample
+    .caps()
+    .ok_or_else(|| GStreamerInputError::PipelineError("No caps in sample".to_string()))?;
+
+  let video_info =
+    gst_video::VideoInfo::from_caps(caps).map_err(|_| GStreamerInputError::VideoInfoError)?;
 
   let width = video_info.width() as usize;
   let height = video_info.height() as usize;
