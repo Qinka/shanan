@@ -13,3 +13,13 @@ pub use self::core::Render;
 
 mod save_image_file;
 pub use self::save_image_file::{SaveImageFileError, SaveImageFileOutput};
+
+#[cfg(feature = "gstreamer_output")]
+mod gstreamer_video_output;
+#[cfg(feature = "gstreamer_output")]
+pub use self::gstreamer_video_output::{GStreamerVideoOutput, GStreamerVideoOutputError};
+
+#[cfg(feature = "gstreamer_output")]
+mod gstreamer_rtsp_output;
+#[cfg(feature = "gstreamer_output")]
+pub use self::gstreamer_rtsp_output::{GStreamerRtspOutput, GStreamerRtspOutputError};
