@@ -20,7 +20,6 @@ use crate::{
 
 use gstreamer::{self as gst, prelude::*};
 use gstreamer_app as gst_app;
-use gstreamer_video as gst_video;
 use thiserror::Error;
 use tracing::{error, info};
 use url::Url;
@@ -45,13 +44,13 @@ pub enum GStreamerRtspOutputError {
   BufferCreationError,
 }
 
-const GSTREAMER_RTSP_OUTPUT_SCHEME: &str = "gstrtsp";
+const GSTREAMER_RTSP_OUTPUT_SCHEME: &str = "rtsp";
 
 pub struct GStreamerRtspOutput {
   pipeline: gst::Pipeline,
   appsrc: gst_app::AppSrc,
-  width: usize,
-  height: usize,
+  _width: usize,
+  _height: usize,
   fps: i32,
   frame_count: Arc<Mutex<u64>>,
 }
@@ -149,8 +148,8 @@ impl FromUrl for GStreamerRtspOutput {
     Ok(GStreamerRtspOutput {
       pipeline,
       appsrc,
-      width,
-      height,
+      _width: width,
+      _height: height,
       fps,
       frame_count: Arc::new(Mutex::new(0)),
     })
@@ -162,23 +161,26 @@ impl Drop for GStreamerRtspOutput {
     if let Err(e) = self.pipeline.set_state(gst::State::Null) {
       tracing::warn!("Failed to stop GStreamer RTSP output pipeline: {}", e);
     }
-    
+
     let frame_count = self.frame_count.lock().unwrap();
-    info!("RTSP output closed. Total frames streamed: {}", *frame_count);
+    info!(
+      "RTSP output closed. Total frames streamed: {}",
+      *frame_count
+    );
   }
 }
 
 impl GStreamerRtspOutput {
   fn push_frame(&self, data: &[u8]) -> Result<(), GStreamerRtspOutputError> {
     let size = data.len();
-    let mut buffer = gst::Buffer::with_size(size)
-      .map_err(|_| GStreamerRtspOutputError::BufferCreationError)?;
+    let mut buffer =
+      gst::Buffer::with_size(size).map_err(|_| GStreamerRtspOutputError::BufferCreationError)?;
 
     {
       let buffer_ref = buffer.get_mut().unwrap();
-      let mut buffer_map = buffer_ref.map_writable().map_err(|_| {
-        GStreamerRtspOutputError::PipelineError("Failed to map buffer".to_string())
-      })?;
+      let mut buffer_map = buffer_ref
+        .map_writable()
+        .map_err(|_| GStreamerRtspOutputError::PipelineError("Failed to map buffer".to_string()))?;
       buffer_map.copy_from_slice(data);
     }
 
@@ -190,15 +192,14 @@ impl GStreamerRtspOutput {
     {
       let buffer_ref = buffer.get_mut().unwrap();
       buffer_ref.set_pts(gst::ClockTime::from_nseconds(timestamp));
-      buffer_ref.set_duration(gst::ClockTime::from_nseconds(1_000_000_000 / self.fps as u64));
+      buffer_ref.set_duration(gst::ClockTime::from_nseconds(
+        1_000_000_000 / self.fps as u64,
+      ));
     }
 
-    self
-      .appsrc
-      .push_buffer(buffer)
-      .map_err(|e| {
-        GStreamerRtspOutputError::PipelineError(format!("Failed to push buffer: {:?}", e))
-      })?;
+    self.appsrc.push_buffer(buffer).map_err(|e| {
+      GStreamerRtspOutputError::PipelineError(format!("Failed to push buffer: {:?}", e))
+    })?;
 
     Ok(())
   }

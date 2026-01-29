@@ -50,7 +50,7 @@ fn main() -> Result<()> {
 
   let input_image = shanan::input::GStreamerInputPipelineBuilder::from_url(&args.input)?.build()?;
   let model = shanan::model::Yolo26Builder::from_url(&args.model)?.build()?;
-  let output = shanan::output::SaveImageFileOutput::from_url(&args.output)?;
+  let output = shanan::output::GStreamerVideoOutput::from_url(&args.output)?;
 
   info!("开始处理图像流...");
   for (index, frame) in input_image.into_nhwc().enumerate() {

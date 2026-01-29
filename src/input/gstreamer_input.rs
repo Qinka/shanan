@@ -117,9 +117,7 @@ impl GStreamerInputPipelineBuilder {
     query: &HashMap<String, String>,
   ) -> Result<Self, GStreamerInputError> {
     let camera = path.to_string();
-    let io_mode = query
-      .get("io-mode")
-      .and_then(|v| v.parse::<u32>().ok());
+    let io_mode = query.get("io-mode").and_then(|v| v.parse::<u32>().ok());
     let format = query
       .get("format")
       .map(String::from)
