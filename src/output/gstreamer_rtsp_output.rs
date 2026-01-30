@@ -93,7 +93,7 @@ use crate::{
   model::{DetectResult, WithLabel},
   output::{
     Render,
-    draw::{draw_detections, image_to_nhwc, nchw_to_image, nhwc_to_image},
+    draw::{draw_detections_nchw_to_nhwc, draw_detections_nhwc_to_nhwc},
   },
 };
 
@@ -310,14 +310,7 @@ impl<const W: u32, const H: u32, T: WithLabel> Render<RgbNchwFrame<W, H>, Detect
     frame: &RgbNchwFrame<W, H>,
     result: &DetectResult<T>,
   ) -> Result<(), Self::Error> {
-    // 转换为图像
-    let mut image = nchw_to_image(frame);
-
-    // 绘制检测结果
-    draw_detections(&mut image, result);
-
-    // 转换回 NHWC 格式并推流
-    let rgb_data = image_to_nhwc(&image);
+    let rgb_data = draw_detections_nchw_to_nhwc(frame, result);
     self.push_frame(&rgb_data)
   }
 }
@@ -332,14 +325,7 @@ impl<const W: u32, const H: u32, T: WithLabel> Render<RgbNhwcFrame<W, H>, Detect
     frame: &RgbNhwcFrame<W, H>,
     result: &DetectResult<T>,
   ) -> Result<(), Self::Error> {
-    // 转换为图像
-    let mut image = nhwc_to_image(frame);
-
-    // 绘制检测结果
-    draw_detections(&mut image, result);
-
-    // 转换回 NHWC 格式并推流
-    let rgb_data = image_to_nhwc(&image);
+    let rgb_data = draw_detections_nhwc_to_nhwc(frame, result);
     self.push_frame(&rgb_data)
   }
 }

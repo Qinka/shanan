@@ -121,8 +121,8 @@ fn draw_bbox_with_label<T: WithLabel>(
   }
 }
 
-/// 在 RgbImage 上绘制目标检测结果
-pub fn draw_detections<T: WithLabel>(image: &mut RgbImage, result: &DetectResult<T>) {
+/// 在 RgbImage 上绘制目标检测结果（内部函数）
+fn draw_detections_on_image<T: WithLabel>(image: &mut RgbImage, result: &DetectResult<T>) {
   // 加载嵌入的字体（使用 lazy_static 或每次加载）
   // 注意：为了保持最小改动，这里保持与原代码相同的方式
   // 在生产环境中，建议使用 lazy_static 或 once_cell 来缓存字体
@@ -142,8 +142,84 @@ pub fn draw_detections<T: WithLabel>(image: &mut RgbImage, result: &DetectResult
   }
 }
 
-/// 从 NchwFrame 创建 RgbImage
-pub fn nchw_to_image<const W: u32, const H: u32>(frame: &RgbNchwFrame<W, H>) -> RgbImage {
+/// 在 NCHW 格式的帧上绘制检测结果，返回带标注的 RgbImage
+///
+/// 这是统一的绘制 API，隐藏了格式转换的细节。
+///
+/// # 参数
+/// * `frame` - NCHW 格式的帧数据
+/// * `result` - 目标检测结果
+///
+/// # 返回
+/// 绘制了检测框和标签的 RgbImage
+pub fn draw_detections_nchw<const W: u32, const H: u32, T: WithLabel>(
+  frame: &RgbNchwFrame<W, H>,
+  result: &DetectResult<T>,
+) -> RgbImage {
+  let mut image = nchw_to_image(frame);
+  draw_detections_on_image(&mut image, result);
+  image
+}
+
+/// 在 NHWC 格式的帧上绘制检测结果，返回带标注的 RgbImage
+///
+/// 这是统一的绘制 API，隐藏了格式转换的细节。
+///
+/// # 参数
+/// * `frame` - NHWC 格式的帧数据
+/// * `result` - 目标检测结果
+///
+/// # 返回
+/// 绘制了检测框和标签的 RgbImage
+pub fn draw_detections_nhwc<const W: u32, const H: u32, T: WithLabel>(
+  frame: &RgbNhwcFrame<W, H>,
+  result: &DetectResult<T>,
+) -> RgbImage {
+  let mut image = nhwc_to_image(frame);
+  draw_detections_on_image(&mut image, result);
+  image
+}
+
+/// 在 NCHW 格式的帧上绘制检测结果，返回 NHWC 格式的数据
+///
+/// 这是统一的绘制 API，用于需要 NHWC 输出的场景（如 GStreamer）。
+///
+/// # 参数
+/// * `frame` - NCHW 格式的帧数据
+/// * `result` - 目标检测结果
+///
+/// # 返回
+/// 绘制了检测框和标签后转换为 NHWC 格式的数据
+pub fn draw_detections_nchw_to_nhwc<const W: u32, const H: u32, T: WithLabel>(
+  frame: &RgbNchwFrame<W, H>,
+  result: &DetectResult<T>,
+) -> Vec<u8> {
+  let mut image = nchw_to_image(frame);
+  draw_detections_on_image(&mut image, result);
+  image_to_nhwc(&image)
+}
+
+/// 在 NHWC 格式的帧上绘制检测结果，返回 NHWC 格式的数据
+///
+/// 这是统一的绘制 API，用于需要 NHWC 输出的场景（如 GStreamer）。
+///
+/// # 参数
+/// * `frame` - NHWC 格式的帧数据
+/// * `result` - 目标检测结果
+///
+/// # 返回
+/// 绘制了检测框和标签后的 NHWC 格式数据
+pub fn draw_detections_nhwc_to_nhwc<const W: u32, const H: u32, T: WithLabel>(
+  frame: &RgbNhwcFrame<W, H>,
+  result: &DetectResult<T>,
+) -> Vec<u8> {
+  let mut image = nhwc_to_image(frame);
+  draw_detections_on_image(&mut image, result);
+  image_to_nhwc(&image)
+}
+
+/// 从 NchwFrame 创建 RgbImage（内部函数）
+fn nchw_to_image<const W: u32, const H: u32>(frame: &RgbNchwFrame<W, H>) -> RgbImage {
   let width = frame.width() as u32;
   let height = frame.height() as u32;
   let data = frame.as_nchw();
@@ -160,8 +236,8 @@ pub fn nchw_to_image<const W: u32, const H: u32>(frame: &RgbNchwFrame<W, H>) -> 
   })
 }
 
-/// 从 NhwcFrame 创建 RgbImage
-pub fn nhwc_to_image<const W: u32, const H: u32>(frame: &RgbNhwcFrame<W, H>) -> RgbImage {
+/// 从 NhwcFrame 创建 RgbImage（内部函数）
+fn nhwc_to_image<const W: u32, const H: u32>(frame: &RgbNhwcFrame<W, H>) -> RgbImage {
   let width = frame.width() as u32;
   let height = frame.height() as u32;
   let data = frame.as_nhwc();
@@ -178,8 +254,8 @@ pub fn nhwc_to_image<const W: u32, const H: u32>(frame: &RgbNhwcFrame<W, H>) -> 
   })
 }
 
-/// 将 RgbImage 转换为 NHWC 格式的数据
-pub fn image_to_nhwc(image: &RgbImage) -> Vec<u8> {
+/// 将 RgbImage 转换为 NHWC 格式的数据（内部函数）
+fn image_to_nhwc(image: &RgbImage) -> Vec<u8> {
   let (width, height) = (image.width(), image.height());
   let mut data = vec![0u8; (width * height * 3) as usize];
 
@@ -196,8 +272,8 @@ pub fn image_to_nhwc(image: &RgbImage) -> Vec<u8> {
   data
 }
 
-/// 将 RgbImage 转换为 NCHW 格式的数据
-pub fn image_to_nchw(image: &RgbImage) -> Vec<u8> {
+/// 将 RgbImage 转换为 NCHW 格式的数据（内部函数）
+fn image_to_nchw(image: &RgbImage) -> Vec<u8> {
   let (width, height) = (image.width(), image.height());
   let plane_size = (width * height) as usize;
   let mut data = vec![0u8; plane_size * 3];
