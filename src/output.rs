@@ -11,6 +11,9 @@
 mod core;
 pub use self::core::Render;
 
+// #[cfg(feature = "save_image_file")]
+pub mod draw;
+
 mod save_image_file;
 pub use self::save_image_file::{SaveImageFileError, SaveImageFileOutput};
 

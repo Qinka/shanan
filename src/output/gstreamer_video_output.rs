@@ -79,9 +79,8 @@ use std::sync::{Arc, Mutex};
 use crate::{
   FromUrl,
   frame::{RgbNchwFrame, RgbNhwcFrame},
-  input::{AsNchwFrame, AsNhwcFrame},
   model::{DetectResult, WithLabel},
-  output::Render,
+  output::{Render, draw::{draw_detections, nchw_to_image, nhwc_to_image, image_to_nhwc}},
 };
 
 use gstreamer::{self as gst, prelude::*};
@@ -306,24 +305,16 @@ impl<const W: u32, const H: u32, T: WithLabel> Render<RgbNchwFrame<W, H>, Detect
   fn render_result(
     &self,
     frame: &RgbNchwFrame<W, H>,
-    _result: &DetectResult<T>,
+    result: &DetectResult<T>,
   ) -> Result<(), Self::Error> {
-    let width = frame.width();
-    let height = frame.height();
-    let nchw_data = frame.as_nchw();
-
-    // Convert NCHW to RGB (HWC format) for GStreamer
-    let mut rgb_data = vec![0u8; width * height * 3];
-    for h in 0..height {
-      for w in 0..width {
-        for c in 0..3 {
-          let src_idx = c * height * width + h * width + w;
-          let dst_idx = (h * width + w) * 3 + c;
-          rgb_data[dst_idx] = nchw_data[src_idx];
-        }
-      }
-    }
-
+    // 转换为图像
+    let mut image = nchw_to_image(frame);
+    
+    // 绘制检测结果
+    draw_detections(&mut image, result);
+    
+    // 转换回 NHWC 格式并推流
+    let rgb_data = image_to_nhwc(&image);
     self.push_frame(&rgb_data)
   }
 }
@@ -336,9 +327,16 @@ impl<const W: u32, const H: u32, T: WithLabel> Render<RgbNhwcFrame<W, H>, Detect
   fn render_result(
     &self,
     frame: &RgbNhwcFrame<W, H>,
-    _result: &DetectResult<T>,
+    result: &DetectResult<T>,
   ) -> Result<(), Self::Error> {
-    let data = frame.as_nhwc();
-    self.push_frame(data)
+    // 转换为图像
+    let mut image = nhwc_to_image(frame);
+    
+    // 绘制检测结果
+    draw_detections(&mut image, result);
+    
+    // 转换回 NHWC 格式并推流
+    let rgb_data = image_to_nhwc(&image);
+    self.push_frame(&rgb_data)
   }
 }
