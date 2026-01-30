@@ -189,7 +189,7 @@ pub enum GStreamerInputBuilderItem {
     format: String,
     width: u32,
     height: u32,
-    framerate_num: u32,
+    fps: u32,
   },
   TargetFormat {
     format: String,
@@ -215,7 +215,7 @@ impl GStreamerInputBuilderItem {
         format,
         width,
         height,
-        framerate_num,
+        fps,
       } => {
         let io_mode_str = if let Some(mode) = io_mode {
           format!(" io-mode={}", mode)
@@ -224,7 +224,7 @@ impl GStreamerInputBuilderItem {
         };
         format!(
           "v4l2src device={}{} ! video/x-raw,format={},width={},height={},framerate={}/1",
-          camera, io_mode_str, format, width, height, framerate_num
+          camera, io_mode_str, format, width, height, fps
         )
       }
       GStreamerInputBuilderItem::TargetFormat { format } => {
@@ -292,7 +292,7 @@ impl<const W: u32, const H: u32> GStreamerInputPipelineBuilder<W, H> {
       format,
       width,
       height,
-      framerate_num,
+      fps: framerate_num,
     });
     items.push(GStreamerInputBuilderItem::AspectRatio { ratio: (W, H) });
 
