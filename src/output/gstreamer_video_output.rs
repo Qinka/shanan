@@ -79,10 +79,11 @@ use std::sync::{Arc, Mutex};
 use crate::{
   FromUrl,
   frame::{RgbNchwFrame, RgbNhwcFrame},
+  input::AsNhwcFrame,
   model::{DetectResult, WithLabel},
   output::{
     Render,
-    draw::{draw_detections_nchw_to_nhwc, draw_detections_nhwc_to_nhwc},
+    draw::{Draw, DrawDetectionOnFrame},
   },
 };
 
@@ -139,14 +140,15 @@ const GSTREAMER_VIDEO_OUTPUT_SCHEME: &str = "gst";
 /// # Ok(())
 /// # }
 /// ```
-pub struct GStreamerVideoOutput<const W: u32, const H: u32> {
+pub struct GStreamerVideoOutput<'a, const W: u32, const H: u32> {
   pipeline: gst::Pipeline,
   appsrc: gst_app::AppSrc,
   fps: i32,
   frame_count: Arc<Mutex<u64>>,
+  draw: Draw<'a>,
 }
 
-impl<const W: u32, const H: u32> FromUrl for GStreamerVideoOutput<W, H> {
+impl<'a, const W: u32, const H: u32> FromUrl for GStreamerVideoOutput<'a, W, H> {
   type Error = GStreamerVideoOutputError;
 
   fn from_url(url: &Url) -> Result<Self, Self::Error> {
@@ -241,11 +243,12 @@ impl<const W: u32, const H: u32> FromUrl for GStreamerVideoOutput<W, H> {
       appsrc,
       fps,
       frame_count: Arc::new(Mutex::new(0)),
+      draw: Draw::default(),
     })
   }
 }
 
-impl<const W: u32, const H: u32> Drop for GStreamerVideoOutput<W, H> {
+impl<'a, const W: u32, const H: u32> Drop for GStreamerVideoOutput<'a, W, H> {
   fn drop(&mut self) {
     // Send EOS to properly close the file
     let _ = self.appsrc.end_of_stream();
@@ -265,7 +268,7 @@ impl<const W: u32, const H: u32> Drop for GStreamerVideoOutput<W, H> {
   }
 }
 
-impl<const W: u32, const H: u32> GStreamerVideoOutput<W, H> {
+impl<'a, const W: u32, const H: u32> GStreamerVideoOutput<'a, W, H> {
   fn push_frame(&self, data: &[u8]) -> Result<(), GStreamerVideoOutputError> {
     let size = data.len();
     let mut buffer =
@@ -300,8 +303,8 @@ impl<const W: u32, const H: u32> GStreamerVideoOutput<W, H> {
   }
 }
 
-impl<const W: u32, const H: u32, T: WithLabel> Render<RgbNchwFrame<W, H>, DetectResult<T>>
-  for GStreamerVideoOutput<W, H>
+impl<'a, const W: u32, const H: u32, T: WithLabel> Render<RgbNchwFrame<W, H>, DetectResult<T>>
+  for GStreamerVideoOutput<'a, W, H>
 {
   type Error = GStreamerVideoOutputError;
 
@@ -310,13 +313,13 @@ impl<const W: u32, const H: u32, T: WithLabel> Render<RgbNchwFrame<W, H>, Detect
     frame: &RgbNchwFrame<W, H>,
     result: &DetectResult<T>,
   ) -> Result<(), Self::Error> {
-    let rgb_data = draw_detections_nchw_to_nhwc(frame, result);
-    self.push_frame(&rgb_data)
+    let rgb_data: RgbNhwcFrame<W, H> = self.draw.draw_detection(frame, result);
+    self.push_frame(rgb_data.as_nhwc())
   }
 }
 
-impl<const W: u32, const H: u32, T: WithLabel> Render<RgbNhwcFrame<W, H>, DetectResult<T>>
-  for GStreamerVideoOutput<W, H>
+impl<'a, const W: u32, const H: u32, T: WithLabel> Render<RgbNhwcFrame<W, H>, DetectResult<T>>
+  for GStreamerVideoOutput<'a, W, H>
 {
   type Error = GStreamerVideoOutputError;
 
@@ -325,7 +328,7 @@ impl<const W: u32, const H: u32, T: WithLabel> Render<RgbNhwcFrame<W, H>, Detect
     frame: &RgbNhwcFrame<W, H>,
     result: &DetectResult<T>,
   ) -> Result<(), Self::Error> {
-    let rgb_data = draw_detections_nhwc_to_nhwc(frame, result);
-    self.push_frame(&rgb_data)
+    let rgb_data: RgbNhwcFrame<W, H> = self.draw.draw_detection(frame, result);
+    self.push_frame(rgb_data.as_nhwc())
   }
 }

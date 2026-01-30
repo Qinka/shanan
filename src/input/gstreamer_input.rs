@@ -342,7 +342,10 @@ impl<const W: u32, const H: u32> GStreamerInputPipelineBuilder<W, H> {
       .map(GStreamerInputBuilderItem::to_pipeline)
       .collect::<Vec<String>>()
       .join(" ! ");
-    let full_pipeline = format!("{} ! appsink name=sink", basic_pipeline);
+    let full_pipeline = format!(
+      "{} ! appsink max-buffers=2 drop=true name=sink",
+      basic_pipeline
+    );
 
     info!("GStreamer pipeline description: {}", full_pipeline);
 

@@ -20,12 +20,13 @@ use crate::{
   model::{DetectResult, WithLabel},
   output::{
     Render,
-    draw::{draw_detections_nchw, draw_detections_nhwc},
+    draw::{Draw, DrawDetectionOnFrame},
   },
 };
 
-pub struct SaveImageFileOutput<const W: u32, const H: u32> {
+pub struct SaveImageFileOutput<'a, const W: u32, const H: u32> {
   path: String,
+  draw: Draw<'a>,
 }
 
 #[derive(Error, Debug)]
@@ -40,7 +41,7 @@ pub enum SaveImageFileError {
 
 const SAVE_IMAGE_FILE_SCHEME: &str = "image";
 
-impl<const W: u32, const H: u32> FromUrl for SaveImageFileOutput<W, H> {
+impl<'a, const W: u32, const H: u32> FromUrl for SaveImageFileOutput<'a, W, H> {
   type Error = SaveImageFileError;
 
   fn from_url(uri: &Url) -> Result<Self, Self::Error> {
@@ -54,11 +55,12 @@ impl<const W: u32, const H: u32> FromUrl for SaveImageFileOutput<W, H> {
 
     Ok(SaveImageFileOutput {
       path: uri.path().to_string(),
+      draw: Draw::default(),
     })
   }
 }
 
-impl<const W: u32, const H: u32> SaveImageFileOutput<W, H> {
+impl<'a, const W: u32, const H: u32> SaveImageFileOutput<'a, W, H> {
   fn save_image(&self, image: image::RgbImage) -> Result<(), SaveImageFileError> {
     if let Some(parent) = Path::new(&self.path).parent()
       && !parent.as_os_str().is_empty()
@@ -76,8 +78,8 @@ impl<const W: u32, const H: u32> SaveImageFileOutput<W, H> {
   }
 }
 
-impl<const W: u32, const H: u32, T: WithLabel> Render<RgbNchwFrame<W, H>, DetectResult<T>>
-  for SaveImageFileOutput<W, H>
+impl<'a, const W: u32, const H: u32, T: WithLabel> Render<RgbNchwFrame<W, H>, DetectResult<T>>
+  for SaveImageFileOutput<'a, W, H>
 {
   type Error = SaveImageFileError;
 
@@ -86,13 +88,13 @@ impl<const W: u32, const H: u32, T: WithLabel> Render<RgbNchwFrame<W, H>, Detect
     frame: &RgbNchwFrame<W, H>,
     result: &DetectResult<T>,
   ) -> Result<(), Self::Error> {
-    let image = draw_detections_nchw(frame, result);
+    let image = self.draw.draw_detection(frame, result);
     self.save_image(image)
   }
 }
 
-impl<const W: u32, const H: u32, T: WithLabel> Render<RgbNhwcFrame<W, H>, DetectResult<T>>
-  for SaveImageFileOutput<W, H>
+impl<'a, const W: u32, const H: u32, T: WithLabel> Render<RgbNhwcFrame<W, H>, DetectResult<T>>
+  for SaveImageFileOutput<'a, W, H>
 {
   type Error = SaveImageFileError;
 
@@ -101,7 +103,7 @@ impl<const W: u32, const H: u32, T: WithLabel> Render<RgbNhwcFrame<W, H>, Detect
     frame: &RgbNhwcFrame<W, H>,
     result: &DetectResult<T>,
   ) -> Result<(), Self::Error> {
-    let image = draw_detections_nhwc(frame, result);
+    let image = self.draw.draw_detection(frame, result);
     self.save_image(image)
   }
 }

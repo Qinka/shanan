@@ -21,6 +21,22 @@ pub struct RgbNchwFrame<const W: u32, const H: u32> {
   data: Box<[u8]>,
 }
 
+impl<const W: u32, const H: u32> From<Vec<u8>> for RgbNchwFrame<W, H> {
+  fn from(data: Vec<u8>) -> Self {
+    if data.len() != (RGB_CHANNELS * W as usize * H as usize) {
+      panic!(
+        "数据长度不匹配: 期望长度 {}, 实际长度 {}",
+        RGB_CHANNELS * W as usize * H as usize,
+        data.len()
+      );
+    }
+
+    Self {
+      data: data.into_boxed_slice(),
+    }
+  }
+}
+
 impl<const W: u32, const H: u32> FrameFormat for RgbNchwFrame<W, H> {
   fn tensor_format(&self) -> rknpu::TensorFormat {
     rknpu::TensorFormat::NCHW
@@ -67,6 +83,22 @@ impl<const W: u32, const H: u32> AsNchwFrame<W, H> for RgbNchwFrame<W, H> {
 
 pub struct RgbNhwcFrame<const W: u32, const H: u32> {
   data: Box<[u8]>,
+}
+
+impl<const W: u32, const H: u32> From<Vec<u8>> for RgbNhwcFrame<W, H> {
+  fn from(data: Vec<u8>) -> Self {
+    if data.len() != (RGB_CHANNELS * W as usize * H as usize) {
+      panic!(
+        "数据长度不匹配: 期望长度 {}, 实际长度 {}",
+        RGB_CHANNELS * W as usize * H as usize,
+        data.len()
+      );
+    }
+
+    Self {
+      data: data.into_boxed_slice(),
+    }
+  }
 }
 
 impl<const W: u32, const H: u32> FrameFormat for RgbNhwcFrame<W, H> {

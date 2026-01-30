@@ -90,10 +90,11 @@ use std::sync::{Arc, Mutex};
 use crate::{
   FromUrl,
   frame::{RgbNchwFrame, RgbNhwcFrame},
+  input::AsNhwcFrame,
   model::{DetectResult, WithLabel},
   output::{
     Render,
-    draw::{draw_detections_nchw_to_nhwc, draw_detections_nhwc_to_nhwc},
+    draw::{Draw, DrawDetectionOnFrame},
   },
 };
 
@@ -150,14 +151,15 @@ const GSTREAMER_RTSP_OUTPUT_SCHEME: &str = "rtsp";
 /// # Ok(())
 /// # }
 /// ```
-pub struct GStreamerRtspOutput<const W: u32, const H: u32> {
+pub struct GStreamerRtspOutput<'a, const W: u32, const H: u32> {
   pipeline: gst::Pipeline,
   appsrc: gst_app::AppSrc,
   fps: i32,
   frame_count: Arc<Mutex<u64>>,
+  draw: Draw<'a>,
 }
 
-impl<const W: u32, const H: u32> FromUrl for GStreamerRtspOutput<W, H> {
+impl<'a, const W: u32, const H: u32> FromUrl for GStreamerRtspOutput<'a, W, H> {
   type Error = GStreamerRtspOutputError;
 
   fn from_url(url: &Url) -> Result<Self, Self::Error> {
@@ -247,11 +249,12 @@ impl<const W: u32, const H: u32> FromUrl for GStreamerRtspOutput<W, H> {
       appsrc,
       fps,
       frame_count: Arc::new(Mutex::new(0)),
+      draw: Draw::default(),
     })
   }
 }
 
-impl<const W: u32, const H: u32> Drop for GStreamerRtspOutput<W, H> {
+impl<'a, const W: u32, const H: u32> Drop for GStreamerRtspOutput<'a, W, H> {
   fn drop(&mut self) {
     if let Err(e) = self.pipeline.set_state(gst::State::Null) {
       tracing::warn!("Failed to stop GStreamer RTSP output pipeline: {}", e);
@@ -265,7 +268,7 @@ impl<const W: u32, const H: u32> Drop for GStreamerRtspOutput<W, H> {
   }
 }
 
-impl<const W: u32, const H: u32> GStreamerRtspOutput<W, H> {
+impl<'a, const W: u32, const H: u32> GStreamerRtspOutput<'a, W, H> {
   fn push_frame(&self, data: &[u8]) -> Result<(), GStreamerRtspOutputError> {
     let size = data.len();
     let mut buffer =
@@ -300,8 +303,8 @@ impl<const W: u32, const H: u32> GStreamerRtspOutput<W, H> {
   }
 }
 
-impl<const W: u32, const H: u32, T: WithLabel> Render<RgbNchwFrame<W, H>, DetectResult<T>>
-  for GStreamerRtspOutput<W, H>
+impl<'a, const W: u32, const H: u32, T: WithLabel> Render<RgbNchwFrame<W, H>, DetectResult<T>>
+  for GStreamerRtspOutput<'a, W, H>
 {
   type Error = GStreamerRtspOutputError;
 
@@ -310,13 +313,13 @@ impl<const W: u32, const H: u32, T: WithLabel> Render<RgbNchwFrame<W, H>, Detect
     frame: &RgbNchwFrame<W, H>,
     result: &DetectResult<T>,
   ) -> Result<(), Self::Error> {
-    let rgb_data = draw_detections_nchw_to_nhwc(frame, result);
-    self.push_frame(&rgb_data)
+    let rgb_data: RgbNhwcFrame<W, H> = self.draw.draw_detection(frame, result);
+    self.push_frame(rgb_data.as_nhwc())
   }
 }
 
-impl<const W: u32, const H: u32, T: WithLabel> Render<RgbNhwcFrame<W, H>, DetectResult<T>>
-  for GStreamerRtspOutput<W, H>
+impl<'a, const W: u32, const H: u32, T: WithLabel> Render<RgbNhwcFrame<W, H>, DetectResult<T>>
+  for GStreamerRtspOutput<'a, W, H>
 {
   type Error = GStreamerRtspOutputError;
 
@@ -325,7 +328,7 @@ impl<const W: u32, const H: u32, T: WithLabel> Render<RgbNhwcFrame<W, H>, Detect
     frame: &RgbNhwcFrame<W, H>,
     result: &DetectResult<T>,
   ) -> Result<(), Self::Error> {
-    let rgb_data = draw_detections_nhwc_to_nhwc(frame, result);
-    self.push_frame(&rgb_data)
+    let rgb_data: RgbNhwcFrame<W, H> = self.draw.draw_detection(frame, result);
+    self.push_frame(rgb_data.as_nhwc())
   }
 }
