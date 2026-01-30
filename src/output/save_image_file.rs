@@ -18,7 +18,10 @@ use crate::{
   FromUrl,
   frame::{RgbNchwFrame, RgbNhwcFrame},
   model::{DetectResult, WithLabel},
-  output::{Render, draw::{draw_detections, nchw_to_image, nhwc_to_image}},
+  output::{
+    Render,
+    draw::{draw_detections, nchw_to_image, nhwc_to_image},
+  },
 };
 
 pub struct SaveImageFileOutput<const W: u32, const H: u32> {

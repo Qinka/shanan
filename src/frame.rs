@@ -40,7 +40,6 @@ impl<const W: u32, const H: u32> Default for RgbNchwFrame<W, H> {
 }
 
 impl<const W: u32, const H: u32> RgbNchwFrame<W, H> {
-
   pub fn height(&self) -> usize {
     H as usize
   }
@@ -89,7 +88,6 @@ impl<const W: u32, const H: u32> Default for RgbNhwcFrame<W, H> {
 }
 
 impl<const W: u32, const H: u32> RgbNhwcFrame<W, H> {
-
   pub fn height(&self) -> usize {
     H as usize
   }
