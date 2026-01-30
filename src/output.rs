@@ -8,8 +8,12 @@
 //
 // Copyright (C) 2026 Johann Li <me@qinka.pro>, ETVP
 
-mod core;
-pub use self::core::Render;
+
+pub trait Render<Frame, Output>: Sized {
+  type Error;
+  fn render_result(&self, frame: &Frame, result: &Output) -> Result<(), Self::Error>;
+}
+
 
 // #[cfg(feature = "save_image_file")]
 pub mod draw;
