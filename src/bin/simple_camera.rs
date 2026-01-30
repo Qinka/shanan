@@ -8,18 +8,16 @@
 //
 // Copyright (C) 2026 Johann Li <me@qinka.pro>, ETVP
 
-use std::{thread::sleep, time::Duration};
-
 use anyhow::Result;
 use clap::Parser;
 use url::Url;
 
 use shanan::{
   FromUrl,
-  model::{CocoLabel, Model},
-  output::Render,
+  model::{CocoLabel, Yolo26Nhwc},
+  task::{ContinuousTask, Task},
 };
-use tracing::{info, warn};
+use tracing::info;
 
 /// Shanan 项目参数配置
 #[derive(Parser, Debug)]
@@ -48,28 +46,12 @@ fn main() -> Result<()> {
   info!("输入来源: {}", args.input);
   info!("输出路径: {}", args.output);
 
-  let input_image =
-    shanan::input::GStreamerInputPipelineBuilder::<640, 640>::from_url(&args.input)?.build()?;
-  let model = shanan::model::Yolo26Builder::from_url(&args.model)?.build()?;
+  let input_image = shanan::input::GStreamerInputPipelineBuilder::from_url(&args.input)?.build()?;
+  let model: Yolo26Nhwc<640, 640, CocoLabel> =
+    shanan::model::Yolo26Builder::from_url(&args.model)?.build()?;
   let output = shanan::output::GStreamerVideoOutput::from_url(&args.output)?;
 
-  info!("开始处理图像流...");
-  for (index, frame) in input_image.into_nhwc().enumerate() {
-    info!("处理第 {} 帧图像", index + 1);
-
-    if (args.frame_number > 0) && (index >= args.frame_number) {
-      warn!("已达到指定帧数 {}, 停止推理", args.frame_number);
-      break;
-    }
-
-    info!("开始推理...");
-    let now = std::time::Instant::now();
-    let result: shanan::model::DetectResult<CocoLabel> = model.infer(&frame)?;
-    let elapsed = now.elapsed();
-    info!("推理完成，耗时: {:.2?}", elapsed);
-    output.render_result(&frame, &result)?;
-    sleep(Duration::from_millis(100));
-  }
+  ContinuousTask.run_task(input_image.into_nhwc(), model, output)?;
 
   Ok(())
 }

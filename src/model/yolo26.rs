@@ -26,8 +26,12 @@ const YOLO26_HEAD_SIZES: [(usize, usize); 3] = [(80, 80), (40, 40), (20, 20)];
 const YOLO26_STRIDES: [f32; 3] = [8.0, 16.0, 32.0];
 const YOLO26_OBJECT_THRESH: f32 = 0.5;
 
+pub type Yolo26Nhwc<const W: u32, const H: u32, T> =
+  Yolo26<W, H, crate::frame::RgbNhwcFrame<H, W>, T>;
+
 pub struct Yolo26<const W: u32, const H: u32, Frame, T> {
   context: Context,
+  object_thresh: f32,
   _phantom: std::marker::PhantomData<(Frame, T)>,
 }
 
@@ -64,6 +68,7 @@ impl Yolo26Error {
 pub struct Yolo26Builder {
   model_path: String,
   flags: InitFlags,
+  object_thresh: f32,
 }
 
 const YOLO26_SCHEME: &str = "yolo26";
@@ -79,9 +84,21 @@ impl FromUrl for Yolo26Builder {
       )));
     }
 
+    let object_thresh = url
+      .query_pairs()
+      .find_map(|(k, v)| {
+        if k == "object_thresh" {
+          v.parse::<f32>().ok()
+        } else {
+          None
+        }
+      })
+      .unwrap_or(YOLO26_OBJECT_THRESH);
+
     Ok(Yolo26Builder {
       model_path: url.path().to_string(),
       flags: InitFlags::default(),
+      object_thresh,
     })
   }
 }
@@ -160,7 +177,11 @@ impl Yolo26Builder {
     debug!("模型输出数量: {}", num_outputs);
 
     let _phantom = std::marker::PhantomData::<(Frame, T)>;
-    Ok(Yolo26 { context, _phantom })
+    Ok(Yolo26 {
+      context,
+      object_thresh: self.object_thresh,
+      _phantom,
+    })
   }
 }
 
@@ -228,10 +249,10 @@ impl<const W: u32, const H: u32, Frame: AsNhwcFrame<H, W>, T: WithLabel> Model
     let output = self.context.get_outputs()?;
     debug!("模型推理结果：{:?}", output);
 
-    Ok(Self::postprocess(output))
+    Ok(self.postprocess(output))
   }
 
-  fn postprocess(output: rknpu::Output) -> Self::Output {
+  fn postprocess(&self, output: rknpu::Output) -> Self::Output {
     // 调试性输出结果
     debug!("后处理模型输出");
     let mut items = Vec::new();
@@ -307,7 +328,7 @@ impl<const W: u32, const H: u32, Frame: AsNhwcFrame<H, W>, T: WithLabel> Model
             (sigmoid(max_logit), cls_idx as u32)
           };
 
-          if score <= YOLO26_OBJECT_THRESH {
+          if score <= self.object_thresh {
             continue;
           }
 

@@ -14,8 +14,8 @@ use url::Url;
 
 use shanan::{
   FromUrl,
-  model::{CocoLabel, Model},
-  output::Render,
+  model::{CocoLabel, Yolo26Nhwc},
+  task::{OneShotTask, Task},
 };
 use tracing::info;
 
@@ -43,18 +43,12 @@ fn main() -> Result<()> {
   info!("输入来源: {}", args.input);
   info!("输出路径: {}", args.output);
 
-  let input_image = shanan::input::ImageFileInput::<640, 640>::from_url(&args.input)?;
-  let model = shanan::model::Yolo26Builder::from_url(&args.model)?.build()?;
+  let input_image = shanan::input::ImageFileInput::from_url(&args.input)?;
+  let model: Yolo26Nhwc<640, 640, CocoLabel> =
+    shanan::model::Yolo26Builder::from_url(&args.model)?.build()?;
   let output = shanan::output::SaveImageFileOutput::from_url(&args.output)?;
 
-  for frame in input_image.into_nhwc() {
-    info!("开始推理...");
-    let now = std::time::Instant::now();
-    let result: shanan::model::DetectResult<CocoLabel> = model.infer(&frame)?;
-    let elapsed = now.elapsed();
-    info!("推理完成，耗时: {:.2?}", elapsed);
-    output.render_result(&frame, &result)?;
-  }
+  OneShotTask.run_task(input_image.into_nhwc(), model, output)?;
 
   Ok(())
 }

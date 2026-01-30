@@ -19,7 +19,7 @@ pub trait Model {
   type Error;
 
   fn infer(&self, input: &Self::Input) -> Result<Self::Output, Self::Error>;
-  fn postprocess(output: rknpu::Output) -> Self::Output;
+  fn postprocess(&self, output: rknpu::Output) -> Self::Output;
 }
 
 #[derive(Debug, Clone)]
@@ -40,4 +40,4 @@ pub trait WithLabel: Sized + std::fmt::Debug {
 }
 
 mod yolo26;
-pub use self::yolo26::{Yolo26, Yolo26Builder};
+pub use self::yolo26::{Yolo26, Yolo26Builder, Yolo26Nhwc};

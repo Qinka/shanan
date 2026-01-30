@@ -12,6 +12,7 @@ pub mod frame;
 pub mod input;
 pub mod model;
 pub mod output;
+pub mod task;
 
 pub trait FromUrl {
   type Error;
