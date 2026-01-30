@@ -123,9 +123,11 @@ fn draw_bbox_with_label<T: WithLabel>(
 
 /// 在 RgbImage 上绘制目标检测结果
 pub fn draw_detections<T: WithLabel>(image: &mut RgbImage, result: &DetectResult<T>) {
-  // 加载嵌入的字体
+  // 加载嵌入的字体（使用 lazy_static 或每次加载）
+  // 注意：为了保持最小改动，这里保持与原代码相同的方式
+  // 在生产环境中，建议使用 lazy_static 或 once_cell 来缓存字体
   let font_data = include_bytes!("../../assets/font.ttf");
-  let font = FontRef::try_from_slice(font_data).expect("无法加载字体文件");
+  let font = FontRef::try_from_slice(font_data).expect("无法加载嵌入的字体文件");
 
   // 绘制检测框和标签
   for DetectItem { kind, score, bbox } in result.items.iter() {
@@ -141,9 +143,7 @@ pub fn draw_detections<T: WithLabel>(image: &mut RgbImage, result: &DetectResult
 }
 
 /// 从 NchwFrame 创建 RgbImage
-pub fn nchw_to_image<const W: u32, const H: u32>(
-  frame: &RgbNchwFrame<W, H>,
-) -> RgbImage {
+pub fn nchw_to_image<const W: u32, const H: u32>(frame: &RgbNchwFrame<W, H>) -> RgbImage {
   let width = frame.width() as u32;
   let height = frame.height() as u32;
   let data = frame.as_nchw();
@@ -161,9 +161,7 @@ pub fn nchw_to_image<const W: u32, const H: u32>(
 }
 
 /// 从 NhwcFrame 创建 RgbImage
-pub fn nhwc_to_image<const W: u32, const H: u32>(
-  frame: &RgbNhwcFrame<W, H>,
-) -> RgbImage {
+pub fn nhwc_to_image<const W: u32, const H: u32>(frame: &RgbNhwcFrame<W, H>) -> RgbImage {
   let width = frame.width() as u32;
   let height = frame.height() as u32;
   let data = frame.as_nhwc();
@@ -184,7 +182,7 @@ pub fn nhwc_to_image<const W: u32, const H: u32>(
 pub fn image_to_nhwc(image: &RgbImage) -> Vec<u8> {
   let (width, height) = (image.width(), image.height());
   let mut data = vec![0u8; (width * height * 3) as usize];
-  
+
   for y in 0..height {
     for x in 0..width {
       let pixel = image.get_pixel(x, y);
@@ -194,7 +192,7 @@ pub fn image_to_nhwc(image: &RgbImage) -> Vec<u8> {
       data[idx + 2] = pixel[2];
     }
   }
-  
+
   data
 }
 
@@ -203,7 +201,7 @@ pub fn image_to_nchw(image: &RgbImage) -> Vec<u8> {
   let (width, height) = (image.width(), image.height());
   let plane_size = (width * height) as usize;
   let mut data = vec![0u8; plane_size * 3];
-  
+
   for y in 0..height {
     for x in 0..width {
       let pixel = image.get_pixel(x, y);
@@ -213,6 +211,6 @@ pub fn image_to_nchw(image: &RgbImage) -> Vec<u8> {
       data[2 * plane_size + idx] = pixel[2];
     }
   }
-  
+
   data
 }
