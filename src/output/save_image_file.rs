@@ -20,7 +20,7 @@ use crate::{
   model::{DetectResult, WithLabel},
   output::{
     Render,
-    draw::{draw_detections, nchw_to_image, nhwc_to_image},
+    draw::{draw_detections_nchw, draw_detections_nhwc},
   },
 };
 
@@ -59,14 +59,7 @@ impl<const W: u32, const H: u32> FromUrl for SaveImageFileOutput<W, H> {
 }
 
 impl<const W: u32, const H: u32> SaveImageFileOutput<W, H> {
-  fn save_image_with_detections<T: WithLabel>(
-    &self,
-    mut image: image::RgbImage,
-    result: &DetectResult<T>,
-  ) -> Result<(), SaveImageFileError> {
-    // 绘制检测框和标签
-    draw_detections(&mut image, result);
-
+  fn save_image(&self, image: image::RgbImage) -> Result<(), SaveImageFileError> {
     if let Some(parent) = Path::new(&self.path).parent()
       && !parent.as_os_str().is_empty()
     {
@@ -93,8 +86,8 @@ impl<const W: u32, const H: u32, T: WithLabel> Render<RgbNchwFrame<W, H>, Detect
     frame: &RgbNchwFrame<W, H>,
     result: &DetectResult<T>,
   ) -> Result<(), Self::Error> {
-    let image = nchw_to_image(frame);
-    self.save_image_with_detections(image, result)
+    let image = draw_detections_nchw(frame, result);
+    self.save_image(image)
   }
 }
 
@@ -108,7 +101,7 @@ impl<const W: u32, const H: u32, T: WithLabel> Render<RgbNhwcFrame<W, H>, Detect
     frame: &RgbNhwcFrame<W, H>,
     result: &DetectResult<T>,
   ) -> Result<(), Self::Error> {
-    let image = nhwc_to_image(frame);
-    self.save_image_with_detections(image, result)
+    let image = draw_detections_nhwc(frame, result);
+    self.save_image(image)
   }
 }
