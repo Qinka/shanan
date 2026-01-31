@@ -24,7 +24,7 @@
 //!
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! // 创建 RTSP 推流输出
-//! let url = Url::parse("gstrtsp://0.0.0.0/live?width=1280&height=720&fps=30&port=8554")?;
+//! let url = Url::parse("gstrtsp://0.0.0.0/live?width=1280&height=720&ifps=5&tfps=30&port=8554")?;
 //! let output = GStreamerRtspOutput::from_url(&url)?;
 //! # Ok(())
 //! # }
@@ -34,7 +34,8 @@
 //!
 //! - `width`: 视频宽度（像素），默认 640
 //! - `height`: 视频高度（像素），默认 480
-//! - `fps`: 帧率（帧/秒），默认 30
+//! - `ifps`: (目标检测）输入帧率（帧/秒），默认 5
+//! - `tfps`: (推流）输出帧率（帧/秒），默认 30
 //! - `port`: UDP 端口，默认 8554
 //!
 //! ## 客户端连接
@@ -154,7 +155,8 @@ const GSTREAMER_RTSP_OUTPUT_SCHEME: &str = "rtsp";
 pub struct GStreamerRtspOutput<'a, const W: u32, const H: u32> {
   pipeline: gst::Pipeline,
   appsrc: gst_app::AppSrc,
-  fps: i32,
+  ifps: i32,
+  _ofps: i32,
   frame_count: Arc<Mutex<u64>>,
   draw: Draw<'a>,
 }
@@ -177,10 +179,14 @@ impl<'a, const W: u32, const H: u32> FromUrl for GStreamerRtspOutput<'a, W, H> {
 
     // Parse query parameters for width, height, fps, port
     let query_pairs: std::collections::HashMap<_, _> = url.query_pairs().collect();
-    let fps: i32 = query_pairs
-      .get("fps")
+    let ifps: i32 = query_pairs
+      .get("ifps")
       .and_then(|v| v.parse().ok())
-      .unwrap_or(30);
+      .unwrap_or(5);
+     let ofps: i32 = query_pairs
+      .get("ofps")
+      .and_then(|v| v.parse().ok())
+      .unwrap_or(5);
     let port: u16 = query_pairs
       .get("port")
       .and_then(|v| v.parse().ok())
@@ -198,10 +204,11 @@ impl<'a, const W: u32, const H: u32> FromUrl for GStreamerRtspOutput<'a, W, H> {
     // Note: This creates a simple UDP stream that can be consumed via RTSP
     // For a full RTSP server, you would need gst-rtsp-server library
     let pipeline_desc = format!(
-      "appsrc name=src ! videoconvert ! video/x-raw,format=I420 ! \
-       mpph264enc ! \
-       rtspclientsink protocols={} latency=0 location=rtsp://{}:{}{}",
-      proto, host, port, stream_path
+      "appsrc name=src ! \
+      videoconvert ! videorate ! video/x-raw,framerate={}/1,format=I420 ! \
+      mpph264enc ! \
+      rtspclientsink protocols={} latency=0 location=rtsp://{}:{}{}",
+      ofps, proto, host, port, stream_path
     );
 
     info!("Creating RTSP output pipeline: {}", pipeline_desc);
@@ -229,7 +236,7 @@ impl<'a, const W: u32, const H: u32> FromUrl for GStreamerRtspOutput<'a, W, H> {
       .field("format", "RGB")
       .field("width", W as i32)
       .field("height", H as i32)
-      .field("framerate", gst::Fraction::new(fps, 1))
+      .field("framerate", gst::Fraction::new(ifps, 1))
       .build();
 
     appsrc.set_caps(Some(&caps));
@@ -240,14 +247,15 @@ impl<'a, const W: u32, const H: u32> FromUrl for GStreamerRtspOutput<'a, W, H> {
     pipeline.set_state(gst::State::Playing)?;
 
     info!(
-      "RTSP output initialized: {}x{} @ {} fps on port {}",
-      W, H, fps, port
+      "RTSP output initialized: {}x{} @ ({} -> {} fps) on port {}",
+      W, H, ifps, ofps, port
     );
 
     Ok(GStreamerRtspOutput {
       pipeline,
       appsrc,
-      fps,
+      ifps,
+      _ofps: ofps,
       frame_count: Arc::new(Mutex::new(0)),
       draw: Draw::default(),
     })
@@ -284,14 +292,14 @@ impl<'a, const W: u32, const H: u32> GStreamerRtspOutput<'a, W, H> {
 
     // Set timestamp
     let mut frame_count = self.frame_count.lock().unwrap();
-    let timestamp = (*frame_count * 1_000_000_000) / (self.fps as u64);
+    let timestamp = (*frame_count * 1_000_000_000) / (self.ifps as u64);
     *frame_count += 1;
 
     {
       let buffer_ref = buffer.get_mut().unwrap();
       buffer_ref.set_pts(gst::ClockTime::from_nseconds(timestamp));
       buffer_ref.set_duration(gst::ClockTime::from_nseconds(
-        1_000_000_000 / self.fps as u64,
+        1_000_000_000 / self.ifps as u64,
       ));
     }
 

@@ -41,7 +41,8 @@
 //!
 //! - `width`: 视频宽度（像素），默认 640
 //! - `height`: 视频高度（像素），默认 480
-//! - `fps`: 帧率（帧/秒），默认 30
+//! - `ifps`: (目标检测）输入帧率（帧/秒），默认 5
+//! - `ofps`: (输出）输出帧率（帧/秒），默认 30
 //!
 //! ## 完整示例
 //!
@@ -63,7 +64,7 @@
 //! let input = GStreamerInput::from_url(&input_url)?;
 //!
 //! // 输出: 视频文件
-//! let output_url = Url::parse("gstvideo:///output.mp4?width=1280&height=720&fps=30")?;
+//! let output_url = Url::parse("gstvideo:///output.mp4?width=1280&height=720&ifps=5&ofps=30")?;
 //! let output = GStreamerVideoOutput::from_url(&output_url)?;
 //!
 //! // 处理并保存
@@ -143,7 +144,8 @@ const GSTREAMER_VIDEO_OUTPUT_SCHEME: &str = "gst";
 pub struct GStreamerVideoOutput<'a, const W: u32, const H: u32> {
   pipeline: gst::Pipeline,
   appsrc: gst_app::AppSrc,
-  fps: i32,
+  ifps: i32,
+  _ofps: i32,
   frame_count: Arc<Mutex<u64>>,
   draw: Draw<'a>,
 }
@@ -166,8 +168,12 @@ impl<'a, const W: u32, const H: u32> FromUrl for GStreamerVideoOutput<'a, W, H> 
 
     // Parse query parameters for width, height, fps
     let query_pairs: std::collections::HashMap<_, _> = url.query_pairs().collect();
-    let fps: i32 = query_pairs
-      .get("fps")
+    let ifps: i32 = query_pairs
+      .get("ifps")
+      .and_then(|v| v.parse().ok())
+      .unwrap_or(5);
+    let ofps: i32 = query_pairs
+      .get("ofps")
       .and_then(|v| v.parse().ok())
       .unwrap_or(30);
 
@@ -177,29 +183,29 @@ impl<'a, const W: u32, const H: u32> FromUrl for GStreamerVideoOutput<'a, W, H> 
     // Build pipeline based on file extension
     let pipeline_desc = if file_path.ends_with(".mp4") {
       format!(
-        "appsrc name=src ! videoconvert ! video/x-raw,format=I420 ! x264enc speed-preset=fast tune=zerolatency ! h264parse ! mp4mux ! filesink location={}",
-        file_path
+        "appsrc name=src ! videoconvert ! videorate ! video/x-raw,framerate={}/1,format=I420 ! x264enc speed-preset=fast tune=zerolatency ! h264parse ! mp4mux ! filesink location={}",
+        ofps, file_path
       )
     } else if file_path.ends_with(".mkv") {
       format!(
-        "appsrc name=src ! videoconvert ! video/x-raw,format=I420 ! x264enc speed-preset=fast ! h264parse ! matroskamux ! filesink location={}",
-        file_path
+        "appsrc name=src ! videoconvert ! videorate ! video/x-raw,framerate={}/1,format=I420 ! x264enc speed-preset=fast ! h264parse ! matroskamux ! filesink location={}",
+        ofps, file_path
       )
     } else if file_path.ends_with(".avi") {
       format!(
-        "appsrc name=src ! videoconvert ! video/x-raw,format=I420 ! x264enc ! avimux ! filesink location={}",
-        file_path
+        "appsrc name=src ! videoconvert ! videorate ! video/x-raw,framerate={}/1,format=I420 ! x264enc ! avimux ! filesink location={}",
+        ofps, file_path
       )
     } else if file_path.ends_with(".webm") {
       format!(
-        "appsrc name=src ! videoconvert ! vp8enc ! webmmux ! filesink location={}",
-        file_path
+        "appsrc name=src ! videoconvert ! videorate ! video/x-raw,framerate={}/1,format=I420 ! vp8enc ! webmmux ! filesink location={}",
+        ofps, file_path
       )
     } else {
       // Default to MP4
       format!(
-        "appsrc name=src ! videoconvert ! video/x-raw,format=I420 ! x264enc speed-preset=fast tune=zerolatency ! h264parse ! mp4mux ! filesink location={}",
-        file_path
+        "appsrc name=src ! videoconvert ! videorate ! video/x-raw,framerate={}/1,format=I420 ! x264enc speed-preset=fast tune=zerolatency ! h264parse ! mp4mux ! filesink location={}",
+        ofps, file_path
       )
     };
 
@@ -224,7 +230,7 @@ impl<'a, const W: u32, const H: u32> FromUrl for GStreamerVideoOutput<'a, W, H> 
       .field("format", "RGB")
       .field("width", W as i32)
       .field("height", H as i32)
-      .field("framerate", gst::Fraction::new(fps, 1))
+      .field("framerate", gst::Fraction::new(ifps, 1))
       .build();
 
     appsrc.set_caps(Some(&caps));
@@ -234,14 +240,15 @@ impl<'a, const W: u32, const H: u32> FromUrl for GStreamerVideoOutput<'a, W, H> 
     pipeline.set_state(gst::State::Playing)?;
 
     info!(
-      "Video output initialized: {}x{} @ {} fps -> {}",
-      W, H, fps, file_path
+      "Video output initialized: {}x{} @ ({} -> {} fps) -> {}",
+      W, H, ifps, ofps, file_path
     );
 
     Ok(GStreamerVideoOutput {
       pipeline,
       appsrc,
-      fps,
+      ifps,
+      _ofps: ofps,
       frame_count: Arc::new(Mutex::new(0)),
       draw: Draw::default(),
     })
@@ -284,14 +291,14 @@ impl<'a, const W: u32, const H: u32> GStreamerVideoOutput<'a, W, H> {
 
     // Set timestamp
     let mut frame_count = self.frame_count.lock().unwrap();
-    let timestamp = (*frame_count * 1_000_000_000) / (self.fps as u64);
+    let timestamp = (*frame_count * 1_000_000_000) / (self.ifps as u64);
     *frame_count += 1;
 
     {
       let buffer_ref = buffer.get_mut().unwrap();
       buffer_ref.set_pts(gst::ClockTime::from_nseconds(timestamp));
       buffer_ref.set_duration(gst::ClockTime::from_nseconds(
-        1_000_000_000 / self.fps as u64,
+        1_000_000_000 / self.ifps as u64,
       ));
     }
 
