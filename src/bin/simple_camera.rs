@@ -33,8 +33,8 @@ pub struct Args {
   #[arg(long, value_name = "OUTPUT")]
   pub output: Url,
 
-  #[arg(long, value_name = "FRAME_NUMBER", default_value_t = 0)]
-  pub frame_number: usize,
+  #[arg(long, value_name = "FRAME_NUMBER")]
+  pub frame_number: Option<usize>,
 }
 
 fn main() -> Result<()> {
@@ -51,7 +51,9 @@ fn main() -> Result<()> {
     shanan::model::Yolo26Builder::from_url(&args.model)?.build()?;
   let output = shanan::output::GStreamerVideoOutput::from_url(&args.output)?;
 
-  ContinuousTask.run_task(input_image.into_nhwc(), model, output)?;
+  ContinuousTask::default()
+    .with_frame_number(args.frame_number)
+    .run_task(input_image.into_nhwc(), model, output)?;
 
   Ok(())
 }

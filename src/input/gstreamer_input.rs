@@ -280,8 +280,8 @@ impl<const W: u32, const H: u32> GStreamerInputPipelineBuilder<W, H> {
       .get("height")
       .and_then(|v| v.parse::<u32>().ok())
       .unwrap_or(H);
-    let framerate_num = query
-      .get("framerate")
+    let fps = query
+      .get("fps")
       .and_then(|v| v.parse::<u32>().ok())
       .unwrap_or(15);
 
@@ -292,7 +292,7 @@ impl<const W: u32, const H: u32> GStreamerInputPipelineBuilder<W, H> {
       format,
       width,
       height,
-      fps: framerate_num,
+      fps,
     });
     items.push(GStreamerInputBuilderItem::AspectRatio { ratio: (W, H) });
 

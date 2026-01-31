@@ -44,7 +44,17 @@ impl<
   }
 }
 
-pub struct ContinuousTask;
+#[derive(Default, Debug)]
+pub struct ContinuousTask {
+  frame_number: Option<usize>,
+}
+
+impl ContinuousTask {
+  pub fn with_frame_number(mut self, frame_number: Option<usize>) -> Self {
+    self.frame_number = frame_number;
+    self
+  }
+}
 
 impl<
   F,
@@ -79,6 +89,10 @@ impl<
       let elapsed_b = now.elapsed();
       now = std::time::Instant::now();
       info!("推理完成，耗时: {:.2?} / {:.2?}", elapsed_a, elapsed_b);
+      if self.frame_number.map(|n| frame_index >= n).unwrap_or(false) {
+        info!("达到指定帧数 {}, 退出任务循环", frame_index);
+        break;
+      }
       if rx.try_recv().is_ok() {
         warn!("中断信号接收，退出任务循环");
         break;

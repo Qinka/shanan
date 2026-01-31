@@ -183,7 +183,7 @@ impl<'a, const W: u32, const H: u32> FromUrl for GStreamerRtspOutput<'a, W, H> {
       .get("ifps")
       .and_then(|v| v.parse().ok())
       .unwrap_or(5);
-     let ofps: i32 = query_pairs
+    let ofps: i32 = query_pairs
       .get("ofps")
       .and_then(|v| v.parse().ok())
       .unwrap_or(5);
@@ -337,6 +337,7 @@ impl<'a, const W: u32, const H: u32, T: WithLabel> Render<RgbNhwcFrame<W, H>, De
     result: &DetectResult<T>,
   ) -> Result<(), Self::Error> {
     let rgb_data: RgbNhwcFrame<W, H> = self.draw.draw_detection(frame, result);
-    self.push_frame(rgb_data.as_nhwc())
+    self.push_frame(rgb_data.as_nhwc())?;
+    Ok(())
   }
 }

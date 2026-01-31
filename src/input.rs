@@ -16,13 +16,14 @@ pub trait AsNhwcFrame<const W: u32, const H: u32> {
   fn as_nhwc(&self) -> &[u8];
 }
 
-// #[cfg(feature = "read_image_file")]
+#[cfg(feature = "read_image_file")]
 mod read_image_file;
+#[cfg(feature = "read_image_file")]
 pub use self::read_image_file::{ImageFileInput, ImageFileInputError};
 
-// #[cfg(feature = "gstreamer_input")]
+#[cfg(feature = "gstreamer_input")]
 mod gstreamer_input;
-// #[cfg(feature = "gstreamer_input")]
+#[cfg(feature = "gstreamer_input")]
 pub use self::gstreamer_input::{
   GStreamerInput, GStreamerInputError, GStreamerInputPipelineBuilder,
 };
