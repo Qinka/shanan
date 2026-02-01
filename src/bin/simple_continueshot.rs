@@ -14,7 +14,7 @@ use url::Url;
 
 use shanan::{
   FromUrl,
-  model::{CocoLabel, Yolo26Nhwc},
+  model::{CocoLabel, DetectionNhwc},
   task::{ContinuousTask, Task},
 };
 use tracing::info;
@@ -46,10 +46,9 @@ fn main() -> Result<()> {
   info!("输入来源: {}", args.input);
   info!("输出路径: {}", args.output);
 
-  let input_image = shanan::input::GStreamerInputPipelineBuilder::from_url(&args.input)?.build()?;
-  let model: Yolo26Nhwc<640, 640, CocoLabel> =
-    shanan::model::Yolo26Builder::from_url(&args.model)?.build()?;
-  let output = shanan::output::GStreamerRtspOutput::from_url(&args.output)?;
+  let input_image = shanan::input::InputWrapper::from_url(&args.input)?;
+  let model: DetectionNhwc<640, 640, CocoLabel> = shanan::model::Detection::from_url(&args.model)?;
+  let output = shanan::output::OutputWrapper::from_url(&args.output)?;
 
   ContinuousTask::default()
     .with_frame_number(args.frame_number)

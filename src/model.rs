@@ -9,6 +9,8 @@
 // Copyright (C) 2026 Johann Li <me@qinka.pro>, ETVP
 
 use shanan_macro::toml_label;
+use thiserror::Error;
+use url::Url;
 
 #[toml_label(file = "labels/coco.toml")]
 pub enum CocoLabel {}
@@ -34,10 +36,78 @@ pub struct DetectResult<T> {
   pub items: Box<[DetectItem<T>]>,
 }
 
+impl<T> DetectResult<T> {
+  pub fn is_empty(&self) -> bool {
+    self.items.is_empty()
+  }
+}
+
 pub trait WithLabel: Sized + std::fmt::Debug {
+  const LABEL_NUM: u32;
   fn to_label_str(&self) -> String;
+  fn to_label_id(&self) -> u32;
   fn from_label_id(id: u32) -> Self;
 }
 
+#[cfg(feature = "model_yolo26")]
+use crate::FromUrlWithScheme;
+use crate::{FromUrl, input::AsNhwcFrame};
+
+#[cfg(feature = "model_yolo26")]
 mod yolo26;
+#[cfg(feature = "model_yolo26")]
 pub use self::yolo26::{Yolo26, Yolo26Builder, Yolo26Nhwc};
+
+pub type DetectionNhwc<const W: u32, const H: u32, T> =
+  Detection<W, H, crate::frame::RgbNhwcFrame<H, W>, T>;
+
+#[derive(Error, Debug)]
+pub enum DetectionError {
+  #[cfg(feature = "model_yolo26")]
+  #[error("Yolo26 错误: {0}")]
+  Yolo26Error(#[from] yolo26::Yolo26Error),
+}
+
+pub enum Detection<const W: u32, const H: u32, F, T> {
+  #[cfg(feature = "model_yolo26")]
+  Yolo26(Yolo26<W, H, F, T>),
+}
+
+impl<const W: u32, const H: u32, F, T> FromUrl for Detection<W, H, F, T> {
+  type Error = DetectionError;
+
+  fn from_url(url: &Url) -> Result<Self, Self::Error> {
+    match url.scheme() {
+      #[cfg(feature = "model_yolo26")]
+      Yolo26Builder::SCHEME => {
+        let model = Yolo26Builder::from_url(url)?.build()?;
+        Ok(Detection::Yolo26(model))
+      }
+      _ => Err(DetectionError::Yolo26Error(
+        yolo26::Yolo26Error::ModelPathError(format!("Unsupported model scheme: {}", url.scheme())),
+      )),
+    }
+  }
+}
+
+impl<const W: u32, const H: u32, Frame: AsNhwcFrame<H, W>, T: WithLabel> Model
+  for Detection<W, H, Frame, T>
+{
+  type Input = Frame;
+  type Output = DetectResult<T>;
+  type Error = DetectionError;
+
+  fn infer(&self, input: &Self::Input) -> Result<Self::Output, Self::Error> {
+    match self {
+      #[cfg(feature = "model_yolo26")]
+      Detection::Yolo26(model) => model.infer(input).map_err(DetectionError::from),
+    }
+  }
+
+  fn postprocess(&self, output: rknpu::Output) -> Self::Output {
+    match self {
+      #[cfg(feature = "model_yolo26")]
+      Detection::Yolo26(model) => model.postprocess(output),
+    }
+  }
+}

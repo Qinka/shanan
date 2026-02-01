@@ -14,7 +14,7 @@ use url::Url;
 
 use shanan::{
   FromUrl,
-  model::{CocoLabel, Yolo26Nhwc},
+  model::{CocoLabel, DetectionNhwc},
   task::{OneShotTask, Task},
 };
 use tracing::info;
@@ -43,10 +43,9 @@ fn main() -> Result<()> {
   info!("输入来源: {}", args.input);
   info!("输出路径: {}", args.output);
 
-  let input_image = shanan::input::ImageFileInput::from_url(&args.input)?;
-  let model: Yolo26Nhwc<640, 640, CocoLabel> =
-    shanan::model::Yolo26Builder::from_url(&args.model)?.build()?;
-  let output = shanan::output::SaveImageFileOutput::from_url(&args.output)?;
+  let input_image = shanan::input::InputWrapper::from_url(&args.input)?;
+  let model: DetectionNhwc<640, 640, CocoLabel> = shanan::model::Detection::from_url(&args.model)?;
+  let output = shanan::output::OutputWrapper::from_url(&args.output)?;
 
   OneShotTask.run_task(input_image.into_nhwc(), model, output)?;
 

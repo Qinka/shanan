@@ -14,7 +14,7 @@ use crate::{model::Model, output::Render};
 
 pub trait Task<I, M, O>: Sized {
   type Error;
-  fn run_task(&self, input: I, model: M, output: O) -> Result<(), Self::Error>;
+  fn run_task(self, input: I, model: M, output: O) -> Result<(), Self::Error>;
 }
 
 pub struct OneShotTask;
@@ -31,7 +31,7 @@ impl<
 {
   type Error = anyhow::Error;
 
-  fn run_task(&self, mut input: I, model: M, output: O) -> Result<(), Self::Error> {
+  fn run_task(self, mut input: I, model: M, output: O) -> Result<(), Self::Error> {
     info!("开始任务...");
     let frame = input.next().ok_or_else(|| anyhow::anyhow!("没有输入帧"))?;
     info!("输入帧获取成功，开始推理...");
@@ -68,7 +68,7 @@ impl<
 {
   type Error = anyhow::Error;
 
-  fn run_task(&self, input: I, model: M, output: O) -> Result<(), Self::Error> {
+  fn run_task(self, input: I, model: M, output: O) -> Result<(), Self::Error> {
     info!("开始任务...");
     let (tx, rx) = std::sync::mpsc::channel();
 

@@ -1,5 +1,5 @@
 // 该文件是 Shanan （山南西风） 项目的一部分。
-// src/lib.rs - 库主文件
+// src/utils.rs - 工具函数
 //
 // 本程序遵循 GNU Affero 通用公共许可证（AGPL）许可协议。
 // 本程序的发布旨在提供实用价值，但不作任何形式的担保，
@@ -8,20 +8,6 @@
 //
 // Copyright (C) 2026 Johann Li <me@qinka.pro>, ETVP
 
-pub mod frame;
-pub mod input;
-pub mod model;
-pub mod output;
-pub mod task;
-pub mod utils;
-
-pub trait FromUrl {
-  type Error;
-  fn from_url(url: &url::Url) -> Result<Self, Self::Error>
-  where
-    Self: Sized;
-}
-
-pub trait FromUrlWithScheme: FromUrl {
-  const SCHEME: &'static str;
+pub fn sigmoid(x: f32) -> f32 {
+  1.0 / (1.0 + (-x).exp())
 }

@@ -9,7 +9,7 @@
 // Copyright (C) 2026 Johann Li <me@qinka.pro>, ETVP
 
 use crate::{
-  FromUrl,
+  FromUrl, FromUrlWithScheme,
   frame::{RgbNchwFrame, RgbNhwcFrame},
 };
 
@@ -20,43 +20,33 @@ use url::Url;
 
 #[derive(Error, Debug)]
 pub enum ImageFileInputError {
-  #[error("URI schema mismatch")]
-  SchemaMismatch,
+  #[error("URI scheme mismatch")]
+  SchemeMismatch,
   #[error("I/O error: {0}")]
-  IoError(std::io::Error),
+  IoError(#[from] std::io::Error),
   #[error("Image loading error: {0}")]
-  ImageLoadError(image::ImageError),
+  ImageLoadError(#[from] image::ImageError),
 }
-
-impl From<std::io::Error> for ImageFileInputError {
-  fn from(err: std::io::Error) -> Self {
-    ImageFileInputError::IoError(err)
-  }
-}
-
-impl From<image::ImageError> for ImageFileInputError {
-  fn from(err: image::ImageError) -> Self {
-    ImageFileInputError::ImageLoadError(err)
-  }
-}
-
-const READ_IMAGE_FILE_SCHEME: &str = "image";
 
 pub struct ImageFileInput<const W: u32, const H: u32> {
   image: Option<RgbImage>,
+}
+
+impl<const W: u32, const H: u32> FromUrlWithScheme for ImageFileInput<W, H> {
+  const SCHEME: &'static str = "image";
 }
 
 impl<const W: u32, const H: u32> FromUrl for ImageFileInput<W, H> {
   type Error = ImageFileInputError;
 
   fn from_url(url: &Url) -> Result<Self, Self::Error> {
-    if url.scheme() != READ_IMAGE_FILE_SCHEME {
+    if url.scheme() != Self::SCHEME {
       error!(
         "URI scheme mismatch: expected '{}', found '{}'",
-        READ_IMAGE_FILE_SCHEME,
+        Self::SCHEME,
         url.scheme()
       );
-      return Err(ImageFileInputError::SchemaMismatch);
+      return Err(ImageFileInputError::SchemeMismatch);
     }
 
     let path = url.path();

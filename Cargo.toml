@@ -4,17 +4,14 @@ version = "0.1.0"
 edition = "2024"
 
 
-[[bin]]
-name = "simple-image"
-path = "src/bin/simple_image.rs"
 
 [[bin]]
-name = "simple-camera"
-path = "src/bin/simple_camera.rs"
+name = "simple-continueshot"
+path = "src/bin/simple_continueshot.rs"
 
 [[bin]]
-name = "simple-camera-rtsp"
-path = "src/bin/simple_camera_rtsp.rs"
+name = "simple-oneshot"
+path = "src/bin/simple_oneshot.rs"
 
 [dependencies]
 anyhow = "1.0"
@@ -28,20 +25,20 @@ ab_glyph = { version = "0.2", optional = true }
 gstreamer = { version = "0.24", optional = true }
 gstreamer-app = { version = "0.24", optional = true }
 gstreamer-video = { version = "0.24", optional = true }
-tracing = "0.1.44"
-tracing-subscriber = "0.3.22"
-thiserror = "2.0.18"
-
+tracing = "0.1"
+tracing-subscriber = "0.3"
+thiserror = "2.0"
+urlencoding = "2.1"
+ctrlc = "3.5"
+chrono = "0.4"
 
 rknpu = { git = "https://github.com/Qinka/rknpu-rs.git", branch = "main" }
 shanan-macro = { git = "https://github.com/Qinka/shanan-macro.git", branch = "main" }
-urlencoding = "2.1.3"
-ctrlc = "3.5.1"
 
 
 [features]
 
-default = ["read_image_file", "save_image_file", "gstreamer_input", "gstreamer_output"]
+default = ["read_image_file", "save_image_file", "gstreamer_input", "gstreamer_output", "directory_record", "model_yolo26"]
 
 # inputs
 read_image_file = ["image"]
@@ -53,3 +50,5 @@ model_yolo26 = []
 # outputs
 gstreamer_output = ["gstreamer", "gstreamer-app", "gstreamer-video"]
 save_image_file = ["image", "imageproc", "ab_glyph"]
+directory_record = []
+

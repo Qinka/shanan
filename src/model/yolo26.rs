@@ -14,14 +14,14 @@ use tracing::{debug, error, info};
 use url::Url;
 
 use crate::{
-  FromUrl,
+  FromUrl, FromUrlWithScheme,
   input::AsNhwcFrame,
   model::{DetectItem, DetectResult, Model, WithLabel},
+  utils::sigmoid,
 };
 
 const YOLO26_NUM_INPUTS: u32 = 1;
 const YOLO26_NUM_OUTPUTS: u32 = 6;
-const YOLO26_CLASS_NUM: usize = 80;
 const YOLO26_HEAD_SIZES: [(usize, usize); 3] = [(80, 80), (40, 40), (20, 20)];
 const YOLO26_STRIDES: [f32; 3] = [8.0, 16.0, 32.0];
 const YOLO26_OBJECT_THRESH: f32 = 0.5;
@@ -38,25 +38,13 @@ pub struct Yolo26<const W: u32, const H: u32, Frame, T> {
 #[derive(Error, Debug)]
 pub enum Yolo26Error {
   #[error("模型加载错误: {0}")]
-  ModelLoadError(std::io::Error),
+  ModelLoadError(#[from] std::io::Error),
   #[error("模型无效: {0}, 错误: {1}")]
   ModelInvalid(String, rknpu::Error),
   #[error("RKNN 错误: {0}")]
-  RknnError(rknpu::Error),
+  RknnError(#[from] rknpu::Error),
   #[error("模型路径错误: {0}")]
   ModelPathError(String),
-}
-
-impl From<std::io::Error> for Yolo26Error {
-  fn from(err: std::io::Error) -> Self {
-    Yolo26Error::ModelLoadError(err)
-  }
-}
-
-impl From<rknpu::Error> for Yolo26Error {
-  fn from(err: rknpu::Error) -> Self {
-    Yolo26Error::RknnError(err)
-  }
 }
 
 impl Yolo26Error {
@@ -71,16 +59,18 @@ pub struct Yolo26Builder {
   object_thresh: f32,
 }
 
-const YOLO26_SCHEME: &str = "yolo26";
+impl FromUrlWithScheme for Yolo26Builder {
+  const SCHEME: &'static str = "yolo26";
+}
 
 impl FromUrl for Yolo26Builder {
   type Error = Yolo26Error;
 
   fn from_url(url: &Url) -> Result<Self, Self::Error> {
-    if url.scheme() != YOLO26_SCHEME {
+    if url.scheme() != Self::SCHEME {
       return Err(Yolo26Error::ModelPathError(format!(
         "模型路径必须使用 {} 方案",
-        YOLO26_SCHEME
+        Self::SCHEME
       )));
     }
 
@@ -262,7 +252,7 @@ impl<const W: u32, const H: u32, Frame: AsNhwcFrame<H, W>, T: WithLabel> Model
     {
       let spatial = map_h * map_w;
       let reg_expected = 4 * spatial;
-      let cls_expected = YOLO26_CLASS_NUM * spatial;
+      let cls_expected = T::LABEL_NUM as usize * spatial;
 
       // 获取该检测头的两个输出张量
       // 由于RKNN输出顺序可能不同，需要根据张量大小来判断哪个是回归，哪个是分类
@@ -318,7 +308,7 @@ impl<const W: u32, const H: u32, Frame: AsNhwcFrame<H, W>, T: WithLabel> Model
           let (score, class_id) = {
             let mut max_logit = f32::MIN;
             let mut cls_idx = 0usize;
-            for c in 0..YOLO26_CLASS_NUM {
+            for c in 0..T::LABEL_NUM as usize {
               let logit = cls[c * spatial + idx];
               if logit > max_logit {
                 max_logit = logit;
@@ -368,8 +358,4 @@ impl<const W: u32, const H: u32, Frame: AsNhwcFrame<H, W>, T: WithLabel> Model
       items: items.into_boxed_slice(),
     }
   }
-}
-
-fn sigmoid(x: f32) -> f32 {
-  1.0 / (1.0 + (-x).exp())
 }

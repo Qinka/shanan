@@ -78,7 +78,7 @@
 use std::sync::{Arc, Mutex};
 
 use crate::{
-  FromUrl,
+  FromUrl, FromUrlWithScheme,
   frame::{RgbNchwFrame, RgbNhwcFrame},
   input::AsNhwcFrame,
   model::{DetectResult, WithLabel},
@@ -123,8 +123,6 @@ pub enum GStreamerVideoOutputError {
   BufferCreationError,
 }
 
-const GSTREAMER_VIDEO_OUTPUT_SCHEME: &str = "gst";
-
 /// GStreamer 视频文件输出
 ///
 /// 管理 GStreamer 编码管道，将视频帧保存为文件。
@@ -150,14 +148,18 @@ pub struct GStreamerVideoOutput<'a, const W: u32, const H: u32> {
   draw: Draw<'a>,
 }
 
+impl<'a, const W: u32, const H: u32> FromUrlWithScheme for GStreamerVideoOutput<'a, W, H> {
+  const SCHEME: &'static str = "gst";
+}
+
 impl<'a, const W: u32, const H: u32> FromUrl for GStreamerVideoOutput<'a, W, H> {
   type Error = GStreamerVideoOutputError;
 
   fn from_url(url: &Url) -> Result<Self, Self::Error> {
-    if url.scheme() != GSTREAMER_VIDEO_OUTPUT_SCHEME {
+    if url.scheme() != Self::SCHEME {
       error!(
         "URI scheme mismatch: expected '{}', found '{}'",
-        GSTREAMER_VIDEO_OUTPUT_SCHEME,
+        Self::SCHEME,
         url.scheme()
       );
       return Err(GStreamerVideoOutputError::SchemeMismatch);

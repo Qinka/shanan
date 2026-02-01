@@ -274,3 +274,31 @@ impl FromRgbImage for RgbImage {
     image.clone()
   }
 }
+
+pub struct Record {
+  pub label_with_name: bool,
+}
+
+impl Record {
+  pub fn record<T: WithLabel>(
+    &self,
+    result: &DetectResult<T>,
+    path: &std::path::Path,
+  ) -> Result<(), std::io::Error> {
+    let mut records = Vec::new();
+    for item in result.items.iter() {
+      let name = if self.label_with_name {
+        item.kind.to_label_str()
+      } else {
+        format!("{}", item.kind.to_label_id())
+      };
+      let record = format!(
+        "{}, {:.4}, {:.4}, {:.4}, {:.4}, {:.4}",
+        name, item.score, item.bbox[0], item.bbox[1], item.bbox[2], item.bbox[3]
+      );
+      records.push(record);
+    }
+    std::fs::write(path.with_extension("txt"), records.join("\n"))?;
+    Ok(())
+  }
+}

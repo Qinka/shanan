@@ -131,7 +131,7 @@
 use std::collections::HashMap;
 
 use crate::{
-  FromUrl,
+  FromUrl, FromUrlWithScheme,
   frame::{RgbNchwFrame, RgbNhwcFrame},
 };
 
@@ -178,8 +178,6 @@ pub enum GStreamerInputError {
   #[error("State change error: {0}")]
   StateChangeError(#[from] gst::StateChangeError),
 }
-
-const GSTREAMER_INPUT_SCHEME: &str = "gst";
 
 pub enum GStreamerInputBuilderItem {
   FileSource(String),
@@ -368,11 +366,15 @@ impl<const W: u32, const H: u32> GStreamerInputPipelineBuilder<W, H> {
   }
 }
 
+impl<const W: u32, const H: u32> FromUrlWithScheme for GStreamerInputPipelineBuilder<W, H> {
+  const SCHEME: &'static str = "gst";
+}
+
 impl<const W: u32, const H: u32> FromUrl for GStreamerInputPipelineBuilder<W, H> {
   type Error = GStreamerInputError;
 
   fn from_url(url: &Url) -> Result<Self, Self::Error> {
-    if url.scheme() != GSTREAMER_INPUT_SCHEME {
+    if url.scheme() != Self::SCHEME {
       return Err(GStreamerInputError::SchemeMismatch);
     }
 
@@ -441,6 +443,10 @@ impl<const W: u32, const H: u32> GStreamerInput<W, H> {
   }
 
   fn pull_sample(&self) -> Option<gst::Sample> {
+    if self.appsink.is_eos() {
+      return None;
+    }
+
     self
       .appsink
       .pull_sample()

@@ -89,7 +89,7 @@
 use std::sync::{Arc, Mutex};
 
 use crate::{
-  FromUrl,
+  FromUrl, FromUrlWithScheme,
   frame::{RgbNchwFrame, RgbNhwcFrame},
   input::AsNhwcFrame,
   model::{DetectResult, WithLabel},
@@ -134,8 +134,6 @@ pub enum GStreamerRtspOutputError {
   BufferCreationError,
 }
 
-const GSTREAMER_RTSP_OUTPUT_SCHEME: &str = "rtsp";
-
 /// GStreamer RTSP 推流输出
 ///
 /// 管理 GStreamer RTSP 编码管道，实时推送视频流。
@@ -161,14 +159,18 @@ pub struct GStreamerRtspOutput<'a, const W: u32, const H: u32> {
   draw: Draw<'a>,
 }
 
+impl<'a, const W: u32, const H: u32> FromUrlWithScheme for GStreamerRtspOutput<'a, W, H> {
+  const SCHEME: &'static str = "rtsp";
+}
+
 impl<'a, const W: u32, const H: u32> FromUrl for GStreamerRtspOutput<'a, W, H> {
   type Error = GStreamerRtspOutputError;
 
   fn from_url(url: &Url) -> Result<Self, Self::Error> {
-    if url.scheme() != GSTREAMER_RTSP_OUTPUT_SCHEME {
+    if url.scheme() != Self::SCHEME {
       error!(
         "URI scheme mismatch: expected '{}', found '{}'",
-        GSTREAMER_RTSP_OUTPUT_SCHEME,
+        Self::SCHEME,
         url.scheme()
       );
       return Err(GStreamerRtspOutputError::SchemeMismatch);

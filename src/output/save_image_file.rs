@@ -15,7 +15,7 @@ use tracing::warn;
 use url::Url;
 
 use crate::{
-  FromUrl,
+  FromUrl, FromUrlWithScheme,
   frame::{RgbNchwFrame, RgbNhwcFrame},
   model::{DetectResult, WithLabel},
   output::{
@@ -36,19 +36,21 @@ pub enum SaveImageFileError {
   #[error("图像错误: {0}")]
   ImageError(image::ImageError),
   #[error("URI 方案不匹配: {0}")]
-  SchemaMismatch(String),
+  SchemeMismatch(String),
 }
 
-const SAVE_IMAGE_FILE_SCHEME: &str = "image";
+impl<'a, const W: u32, const H: u32> FromUrlWithScheme for SaveImageFileOutput<'a, W, H> {
+  const SCHEME: &'static str = "image";
+}
 
 impl<'a, const W: u32, const H: u32> FromUrl for SaveImageFileOutput<'a, W, H> {
   type Error = SaveImageFileError;
 
   fn from_url(uri: &Url) -> Result<Self, Self::Error> {
-    if uri.scheme() != SAVE_IMAGE_FILE_SCHEME {
-      return Err(SaveImageFileError::SchemaMismatch(format!(
+    if uri.scheme() != Self::SCHEME {
+      return Err(SaveImageFileError::SchemeMismatch(format!(
         "期望保存方式 '{}', 实际保存方式 '{}'",
-        SAVE_IMAGE_FILE_SCHEME,
+        Self::SCHEME,
         uri.scheme()
       )));
     }

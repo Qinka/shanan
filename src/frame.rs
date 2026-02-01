@@ -17,6 +17,7 @@ pub trait FrameFormat {
   fn tensor_type(&self) -> rknpu::TensorType;
 }
 
+#[derive(Debug, Clone)]
 pub struct RgbNchwFrame<const W: u32, const H: u32> {
   data: Box<[u8]>,
 }
@@ -81,6 +82,7 @@ impl<const W: u32, const H: u32> AsNchwFrame<W, H> for RgbNchwFrame<W, H> {
   }
 }
 
+#[derive(Debug, Clone)]
 pub struct RgbNhwcFrame<const W: u32, const H: u32> {
   data: Box<[u8]>,
 }
