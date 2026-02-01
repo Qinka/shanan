@@ -14,10 +14,13 @@ name = "simple-oneshot"
 path = "src/bin/simple_oneshot.rs"
 
 [dependencies]
+
+rknpu = { git = "https://github.com/Qinka/rknpu-rs.git", branch = "main" }
+shanan-macro = { git = "https://github.com/Qinka/shanan-macro.git", branch = "main" }
+
 anyhow = "1.0"
 clap = { version = "4.5", features = ["derive"] }
 url = "2.5"
-
 v4l = "0.14"
 image = { version = "0.25", features = ["png", "jpeg"], optional = true }
 imageproc = { version = "0.26", optional = true }
@@ -31,9 +34,6 @@ thiserror = "2.0"
 urlencoding = "2.1"
 ctrlc = "3.5"
 chrono = "0.4"
-
-rknpu = { git = "https://github.com/Qinka/rknpu-rs.git", branch = "main" }
-shanan-macro = { git = "https://github.com/Qinka/shanan-macro.git", branch = "main" }
 
 
 [features]

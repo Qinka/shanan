@@ -181,7 +181,9 @@ impl<'a, const W: u32, const H: u32, T: WithLabel> Render<RgbNchwFrame<W, H>, De
     result: &DetectResult<T>,
   ) -> Result<(), Self::Error> {
     let path = self.frame_path();
-    self.draw.save_result(&path, frame, result)?;
+    if self.always || !result.is_empty() {
+      self.draw.save_result(&path, frame, result)?;
+    }
     Ok(())
   }
 }
