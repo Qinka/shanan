@@ -11,16 +11,21 @@
 //
 // Copyright (C) 2026 Johann Li <me@qinka.pro>, Wareless Group
 
+// use image::Frame;
 use rknpu::{Context, InitFlags, TensorType};
+#[cfg(not(feature = "cubecl-wgpu"))]
+use shanan_cv::cubecl::{self, client::ComputeClient};
+use shanan_cv::data::DataBuffer;
 use thiserror::Error;
 use tracing::{debug, error, info};
 use url::Url;
 
 use crate::{
-  FromUrl, FromUrlWithScheme,
+  FromUrl,
+  FromUrlWithScheme,
   input::AsNhwcFrame,
   model::{DetectItem, DetectResult, Model, WithLabel},
-  utils::sigmoid,
+  // utils::sigmoid,
 };
 
 const YOLO26_NUM_INPUTS: u32 = 1;
@@ -29,12 +34,22 @@ const YOLO26_HEAD_SIZES: [(usize, usize); 3] = [(80, 80), (40, 40), (20, 20)];
 const YOLO26_STRIDES: [f32; 3] = [8.0, 16.0, 32.0];
 const YOLO26_OBJECT_THRESH: f32 = 0.5;
 
+#[cfg(not(feature = "cubecl-wgpu"))]
+const SCV_P_DIM: u32 = 4;
+#[cfg(feature = "cubecl-wgpu")]
+const SCV_P_DIM: u32 = 256;
+
 pub type Yolo26Nhwc<const W: u32, const H: u32, T> =
   Yolo26<W, H, crate::frame::RgbNhwcFrame<H, W>, T>;
 
 pub struct Yolo26<const W: u32, const H: u32, Frame, T> {
   context: Context,
   object_thresh: f32,
+  postprocess: shanan_cv::postprocess::detection::Yolo26,
+  #[cfg(not(feature = "cubecl-wgpu"))]
+  cl_client: ComputeClient<cubecl::cpu::CpuRuntime>,
+  #[cfg(feature = "cubecl-wgpu")]
+  cl_client: ComputeClient<cubecl::wgpu::WgpuRuntime>,
   _phantom: std::marker::PhantomData<(Frame, T)>,
 }
 
@@ -48,6 +63,10 @@ pub enum Yolo26Error {
   RknnError(#[from] rknpu::Error),
   #[error("模型路径错误: {0}")]
   ModelPathError(String),
+  #[error("shanan-cv 后处理错误: {0}")]
+  PostprocessError(#[from] shanan_cv::postprocess::detection::Yolo26Error),
+  #[error("shanan-cv databuffer 错误: {0}")]
+  DataBufferError(#[from] shanan_cv::data::DataBufferError),
 }
 
 impl Yolo26Error {
@@ -60,6 +79,7 @@ pub struct Yolo26Builder {
   model_path: String,
   flags: InitFlags,
   object_thresh: f32,
+  ppconfig: shanan_cv::postprocess::detection::Yolo26Config,
 }
 
 impl FromUrlWithScheme for Yolo26Builder {
@@ -88,10 +108,24 @@ impl FromUrl for Yolo26Builder {
       })
       .unwrap_or(YOLO26_OBJECT_THRESH);
 
+    let pdim = url
+      .query_pairs()
+      .find_map(|(k, v)| {
+        if k == "pdim" {
+          v.parse::<u32>().ok()
+        } else {
+          None
+        }
+      })
+      .unwrap_or(SCV_P_DIM);
+
+    let ppconfig = shanan_cv::postprocess::detection::Yolo26Config::default().with_dim(pdim);
+
     Ok(Yolo26Builder {
       model_path: url.path().to_string(),
       flags: InitFlags::default(),
       object_thresh,
+      ppconfig,
     })
   }
 }
@@ -169,48 +203,34 @@ impl Yolo26Builder {
     debug!("模型输入数量: {}", num_inputs);
     debug!("模型输出数量: {}", num_outputs);
 
+    let postprocess = self.ppconfig.with_shape(W, H).build()?;
+
+    #[cfg(not(feature = "cubecl-wgpu"))]
+    let cl_client = {
+      use shanan_cv::cubecl::{
+        Runtime,
+        cpu::{CpuDevice, CpuRuntime},
+      };
+      CpuRuntime::client(&CpuDevice)
+    };
+
+    #[cfg(feature = "cubecl-wgpu")]
+    let cl_client = {
+      use shanan_cv::cubecl::{
+        Runtime,
+        wgpu::{WgpuDevice, WgpuRuntime},
+      };
+      WgpuRuntime::client(&WgpuDevice::default())
+    };
+
     let _phantom = std::marker::PhantomData::<(Frame, T)>;
     Ok(Yolo26 {
       context,
       object_thresh: self.object_thresh,
+      postprocess,
+      cl_client,
       _phantom,
     })
-  }
-}
-
-/// 根据张量大小匹配回归和分类输出
-/// 返回 (reg, cls) 元组，如果大小不匹配则返回 None
-fn match_reg_cls_tensors<'a>(
-  tensor1: &'a [f32],
-  tensor2: &'a [f32],
-  reg_expected: usize,
-  cls_expected: usize,
-  head_idx: usize,
-  output_idx1: usize,
-  output_idx2: usize,
-) -> Option<(&'a [f32], &'a [f32])> {
-  if tensor1.len() == reg_expected && tensor2.len() == cls_expected {
-    debug!(
-      "检测头 {}: 输出顺序正常 - 索引 {} 是回归，索引 {} 是分类",
-      head_idx, output_idx1, output_idx2
-    );
-    Some((tensor1, tensor2))
-  } else if tensor1.len() == cls_expected && tensor2.len() == reg_expected {
-    debug!(
-      "检测头 {}: 输出顺序交换 - 索引 {} 是分类，索引 {} 是回归",
-      head_idx, output_idx1, output_idx2
-    );
-    Some((tensor2, tensor1))
-  } else {
-    error!(
-      "检测头 {}: 输出大小不匹配 - 张量1: {}, 张量2: {}, 期望回归: {}, 期望分类: {}",
-      head_idx,
-      tensor1.len(),
-      tensor2.len(),
-      reg_expected,
-      cls_expected
-    );
-    None
   }
 }
 
@@ -242,17 +262,143 @@ impl<const W: u32, const H: u32, Frame: AsNhwcFrame<H, W>, T: WithLabel> Model
     let output = self.context.get_outputs()?;
     debug!("模型推理结果：{:?}", output);
 
-    Ok(self.postprocess(output))
+    self.postprocess(output)
   }
 
-  fn postprocess(&self, output: rknpu::Output) -> Self::Output {
+  fn postprocess(&self, output: rknpu::Output) -> Result<Self::Output, Self::Error> {
+    // Ok(self.postprocess_normal(output))
+    self.postprocess_cv(output).map_err(|e| {
+      error!("后处理失败: {}", e);
+      e
+    })
+  }
+}
+
+impl<const W: u32, const H: u32, Frame: AsNhwcFrame<H, W>, T: WithLabel> Yolo26<W, H, Frame, T> {
+  // fn postprocess_normal(&self, output: rknpu::Output) -> DetectResult<T> {
+  //   // 调试性输出结果
+  //   debug!("后处理模型输出");
+  //   let mut items = Vec::new();
+
+  //   for (head_idx, (&(map_h, map_w), stride)) in
+  //     YOLO26_HEAD_SIZES.iter().zip(YOLO26_STRIDES).enumerate()
+  //   {
+  //     let spatial = map_h * map_w;
+  //     let reg_expected = 4 * spatial;
+  //     let cls_expected = T::LABEL_NUM as usize * spatial;
+
+  //     // 获取该检测头的两个输出张量
+  //     // 由于RKNN输出顺序可能不同，需要根据张量大小来判断哪个是回归，哪个是分类
+  //     let output_idx1 = head_idx * 2;
+  //     let output_idx2 = head_idx * 2 + 1;
+
+  //     let tensor1 = match output.get_f32(output_idx1) {
+  //       Ok(data) => data,
+  //       Err(e) => {
+  //         error!("获取第 {} 个输出失败: {}", output_idx1, e);
+  //         continue;
+  //       }
+  //     };
+
+  //     let tensor2 = match output.get_f32(output_idx2) {
+  //       Ok(data) => data,
+  //       Err(e) => {
+  //         error!("获取第 {} 个输出失败: {}", output_idx2, e);
+  //         continue;
+  //       }
+  //     };
+
+  //     debug!(
+  //       "检测头 {}: 张量1大小={}, 张量2大小={}, 空间大小={}x{}={}, 期望回归={}, 期望分类={}",
+  //       head_idx,
+  //       tensor1.len(),
+  //       tensor2.len(),
+  //       map_h,
+  //       map_w,
+  //       spatial,
+  //       reg_expected,
+  //       cls_expected
+  //     );
+
+  //     // 根据张量大小判断哪个是回归输出，哪个是分类输出
+  //     let (reg, cls) = match Self::match_reg_cls_tensors(
+  //       tensor1,
+  //       tensor2,
+  //       reg_expected,
+  //       cls_expected,
+  //       head_idx,
+  //       output_idx1,
+  //       output_idx2,
+  //     ) {
+  //       Some(tensors) => tensors,
+  //       None => continue,
+  //     };
+
+  //     for h in 0..map_h {
+  //       for w in 0..map_w {
+  //         let idx = h * map_w + w;
+
+  //         let (score, class_id) = {
+  //           let mut max_logit = f32::MIN;
+  //           let mut cls_idx = 0usize;
+  //           for c in 0..T::LABEL_NUM as usize {
+  //             let logit = cls[c * spatial + idx];
+  //             if logit > max_logit {
+  //               max_logit = logit;
+  //               cls_idx = c;
+  //             }
+  //           }
+  //           (sigmoid(max_logit), cls_idx as u32)
+  //         };
+
+  //         if score <= self.object_thresh {
+  //           continue;
+  //         }
+
+  //         let cx = reg[idx];
+  //         let cy = reg[spatial + idx];
+  //         let cw = reg[2 * spatial + idx];
+  //         let ch = reg[3 * spatial + idx];
+
+  //         let grid_x = (w as f32) + 0.5;
+  //         let grid_y = (h as f32) + 0.5;
+
+  //         let xmin = ((grid_x - cx) * stride).clamp(0.0, W as f32);
+  //         let ymin = ((grid_y - cy) * stride).clamp(0.0, H as f32);
+  //         let xmax = ((grid_x + cw) * stride).clamp(0.0, W as f32);
+  //         let ymax = ((grid_y + ch) * stride).clamp(0.0, H as f32);
+
+  //         if xmin >= 0.0 && ymin >= 0.0 && xmax <= W as f32 && ymax <= H as f32 {
+  //           items.push(DetectItem {
+  //             kind: T::from_label_id(class_id),
+  //             score,
+  //             bbox: [
+  //               xmin / W as f32,
+  //               ymin / H as f32,
+  //               xmax / W as f32,
+  //               ymax / H as f32,
+  //             ],
+  //           });
+  //         }
+  //       }
+  //     }
+  //   }
+
+  //   debug!("检测到 {} 个物体", items.len());
+  //   debug!("检测结果: {:?}", items);
+
+  //   DetectResult {
+  //     items: items.into_boxed_slice(),
+  //   }
+  // }
+
+  fn postprocess_cv(&self, output: rknpu::Output) -> Result<DetectResult<T>, Yolo26Error> {
     // 调试性输出结果
     debug!("后处理模型输出");
     let mut items = Vec::new();
 
-    for (head_idx, (&(map_h, map_w), stride)) in
-      YOLO26_HEAD_SIZES.iter().zip(YOLO26_STRIDES).enumerate()
-    {
+    let shape_info = YOLO26_HEAD_SIZES.iter().zip(YOLO26_STRIDES).enumerate();
+    for (head_idx, (&(map_h, map_w), stride)) in shape_info {
       let spatial = map_h * map_w;
       let reg_expected = 4 * spatial;
       let cls_expected = T::LABEL_NUM as usize * spatial;
@@ -291,7 +437,7 @@ impl<const W: u32, const H: u32, Frame: AsNhwcFrame<H, W>, T: WithLabel> Model
       );
 
       // 根据张量大小判断哪个是回归输出，哪个是分类输出
-      let (reg, cls) = match match_reg_cls_tensors(
+      let (reg, cls) = match Self::match_reg_cls_tensors(
         tensor1,
         tensor2,
         reg_expected,
@@ -304,61 +450,89 @@ impl<const W: u32, const H: u32, Frame: AsNhwcFrame<H, W>, T: WithLabel> Model
         None => continue,
       };
 
+      // 调用 shanan-cv 的后处理函数
+      let cls = DataBuffer::from_slice(
+        cls,
+        &[1, T::LABEL_NUM as usize, map_h, map_w],
+        &self.cl_client,
+      )?;
+      let reg = DataBuffer::from_slice(reg, &[1, 4, map_h, map_w], &self.cl_client)?;
+
+      let (score, index, bbox) = self
+        .postprocess
+        .execute(&self.cl_client, cls, reg, stride)?;
+
+      let score = score.into_vec(&self.cl_client)?;
+      let index = index.into_vec(&self.cl_client)?;
+      let bbox = bbox.into_vec(&self.cl_client)?;
+
       for h in 0..map_h {
         for w in 0..map_w {
-          let idx = h * map_w + w;
+          let score_value = score[h * map_w + w];
+          if score_value >= self.object_thresh {
+            let class_id = index[h * map_w + w];
+            let xmin = bbox[h * map_w + w];
+            let ymin = bbox[spatial + h * map_w + w];
+            let xmax = bbox[2 * spatial + h * map_w + w];
+            let ymax = bbox[3 * spatial + h * map_w + w];
 
-          let (score, class_id) = {
-            let mut max_logit = f32::MIN;
-            let mut cls_idx = 0usize;
-            for c in 0..T::LABEL_NUM as usize {
-              let logit = cls[c * spatial + idx];
-              if logit > max_logit {
-                max_logit = logit;
-                cls_idx = c;
-              }
+            if xmin >= 0.0 && ymin >= 0.0 && xmax <= W as f32 && ymax <= H as f32 {
+              items.push(DetectItem {
+                kind: T::from_label_id(class_id),
+                score: score_value,
+                bbox: [
+                  xmin / W as f32,
+                  ymin / H as f32,
+                  xmax / W as f32,
+                  ymax / H as f32,
+                ],
+              });
             }
-            (sigmoid(max_logit), cls_idx as u32)
-          };
-
-          if score <= self.object_thresh {
-            continue;
-          }
-
-          let cx = reg[idx];
-          let cy = reg[spatial + idx];
-          let cw = reg[2 * spatial + idx];
-          let ch = reg[3 * spatial + idx];
-
-          let grid_x = (w as f32) + 0.5;
-          let grid_y = (h as f32) + 0.5;
-
-          let xmin = ((grid_x - cx) * stride).clamp(0.0, W as f32);
-          let ymin = ((grid_y - cy) * stride).clamp(0.0, H as f32);
-          let xmax = ((grid_x + cw) * stride).clamp(0.0, W as f32);
-          let ymax = ((grid_y + ch) * stride).clamp(0.0, H as f32);
-
-          if xmin >= 0.0 && ymin >= 0.0 && xmax <= W as f32 && ymax <= H as f32 {
-            items.push(DetectItem {
-              kind: T::from_label_id(class_id),
-              score,
-              bbox: [
-                xmin / W as f32,
-                ymin / H as f32,
-                xmax / W as f32,
-                ymax / H as f32,
-              ],
-            });
           }
         }
       }
+
+      // self.postprocess.execute()
     }
 
-    debug!("检测到 {} 个物体", items.len());
-    debug!("检测结果: {:?}", items);
-
-    DetectResult {
+    Ok(DetectResult {
       items: items.into_boxed_slice(),
+    })
+  }
+
+  /// 根据张量大小匹配回归和分类输出
+  /// 返回 (reg, cls) 元组，如果大小不匹配则返回 None
+  fn match_reg_cls_tensors<'a>(
+    tensor1: &'a [f32],
+    tensor2: &'a [f32],
+    reg_expected: usize,
+    cls_expected: usize,
+    head_idx: usize,
+    output_idx1: usize,
+    output_idx2: usize,
+  ) -> Option<(&'a [f32], &'a [f32])> {
+    if tensor1.len() == reg_expected && tensor2.len() == cls_expected {
+      debug!(
+        "检测头 {}: 输出顺序正常 - 索引 {} 是回归，索引 {} 是分类",
+        head_idx, output_idx1, output_idx2
+      );
+      Some((tensor1, tensor2))
+    } else if tensor1.len() == cls_expected && tensor2.len() == reg_expected {
+      debug!(
+        "检测头 {}: 输出顺序交换 - 索引 {} 是分类，索引 {} 是回归",
+        head_idx, output_idx1, output_idx2
+      );
+      Some((tensor2, tensor1))
+    } else {
+      error!(
+        "检测头 {}: 输出大小不匹配 - 张量1: {}, 张量2: {}, 期望回归: {}, 期望分类: {}",
+        head_idx,
+        tensor1.len(),
+        tensor2.len(),
+        reg_expected,
+        cls_expected
+      );
+      None
     }
   }
 }

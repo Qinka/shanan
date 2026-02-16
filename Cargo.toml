@@ -1,6 +1,6 @@
 [package]
 name = "shanan"
-version = "0.1.0"
+version = "0.1.15"
 edition = "2024"
 authors = ["Johann Li <me@qinka.pro> @Qinka"]
 description = "A detection demo on rknpu with rust"
@@ -19,10 +19,15 @@ path = "src/bin/simple_continueshot.rs"
 name = "simple-oneshot"
 path = "src/bin/simple_oneshot.rs"
 
+[[bin]]
+name = "simple-repeatshot"
+path = "src/bin/simple_repeatshot.rs"
+
 [dependencies]
 
 rknpu = { git = "https://github.com/Qinka/rknpu-rs.git", branch = "main" }
 shanan-macro = { git = "https://github.com/Qinka/shanan-macro.git", branch = "main" }
+shanan-cv = { git = "https://github.com/Qinka/shanan-cv.git", branch = "main", default-features = false, features = ["cpu"] }
 
 anyhow = "1.0"
 clap = { version = "4.5", features = ["derive"] }
@@ -57,4 +62,7 @@ model_yolo26 = []
 gstreamer_output = ["gstreamer", "gstreamer-app", "gstreamer-video"]
 save_image_file = ["image", "imageproc", "ab_glyph"]
 directory_record = []
+
+# 加速
+cubecl-wgpu = ["shanan-cv/wgpu"]
 

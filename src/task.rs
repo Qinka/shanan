@@ -44,6 +44,48 @@ impl<
     let elapsed = now.elapsed();
     info!("推理完成，耗时: {:.2?}", elapsed);
     output.render_result(&frame, &result)?;
+    info!("渲染完成，耗时: {:.2?}", elapsed);
+
+    Ok(())
+  }
+}
+
+pub struct RepeatShotTask;
+
+impl<
+  F,
+  D,
+  ME: std::error::Error + Sync + Send + 'static,
+  RE: std::error::Error + Sync + Send + 'static,
+  I: Iterator<Item = F>,
+  M: Model<Input = F, Output = D, Error = ME>,
+  O: Render<F, D, Error = RE>,
+> Task<I, M, O> for RepeatShotTask
+{
+  type Error = anyhow::Error;
+
+  fn run_task(self, mut input: I, model: M, output: O) -> Result<(), Self::Error> {
+    const REPEAT_TIMES: usize = 1000;
+
+    info!("开始任务...");
+    let frame = input.next().ok_or_else(|| anyhow::anyhow!("没有输入帧"))?;
+    info!("输入帧获取成功，开始推理...");
+    let mut times = Vec::with_capacity(REPEAT_TIMES);
+    for i in 0..REPEAT_TIMES {
+      let now = std::time::Instant::now();
+      let result = model.infer(&frame)?;
+      let elapsed = now.elapsed();
+      info!("({})推理完成，耗时: {:.2?}", i, elapsed);
+      output.render_result(&frame, &result)?;
+      info!("({})渲染完成，耗时: {:.2?}", i, elapsed);
+      times.push(elapsed);
+    }
+
+    warn!(
+      "平均推理时间: {:.2?}",
+      times.iter().skip(2).sum::<Duration>() / (times.len() - 2) as u32
+    );
+
     Ok(())
   }
 }

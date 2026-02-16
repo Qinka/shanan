@@ -24,7 +24,7 @@ pub trait Model {
   type Error;
 
   fn infer(&self, input: &Self::Input) -> Result<Self::Output, Self::Error>;
-  fn postprocess(&self, output: rknpu::Output) -> Self::Output;
+  fn postprocess(&self, output: rknpu::Output) -> Result<Self::Output, Self::Error>;
 }
 
 #[derive(Debug, Clone)]
@@ -107,10 +107,10 @@ impl<const W: u32, const H: u32, Frame: AsNhwcFrame<H, W>, T: WithLabel> Model
     }
   }
 
-  fn postprocess(&self, output: rknpu::Output) -> Self::Output {
+  fn postprocess(&self, output: rknpu::Output) -> Result<Self::Output, Self::Error> {
     match self {
       #[cfg(feature = "model_yolo26")]
-      Detection::Yolo26(model) => model.postprocess(output),
+      Detection::Yolo26(model) => model.postprocess(output).map_err(DetectionError::from),
     }
   }
 }
