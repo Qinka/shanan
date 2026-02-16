@@ -2,6 +2,12 @@
 name = "shanan"
 version = "0.1.0"
 edition = "2024"
+authors = ["Johann Li <me@qinka.pro> @Qinka"]
+description = "A detection demo on rknpu with rust"
+repository = "https://github.com/Qinka/shanan"
+keywords = ["computer-vision", "image-processing", "gpu", "rknpu"]
+categories = ["computer-vision", "multimedia::images"]
+license = "Apache-2.0"
 
 
 
