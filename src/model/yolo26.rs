@@ -13,7 +13,6 @@
 
 // use image::Frame;
 use rknpu::{Context, InitFlags, TensorType};
-#[cfg(not(feature = "cubecl-wgpu"))]
 use shanan_cv::cubecl::{self, client::ComputeClient};
 use shanan_cv::data::DataBuffer;
 use thiserror::Error;
