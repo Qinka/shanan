@@ -1,6 +1,6 @@
 [package]
 name = "shanan"
-version = "0.1.15"
+version = "0.1.17"
 edition = "2024"
 authors = ["Johann Li <me@qinka.pro> @Qinka"]
 description = "A detection demo on rknpu with rust"

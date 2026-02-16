@@ -480,12 +480,7 @@ impl<const W: u32, const H: u32, Frame: AsNhwcFrame<H, W>, T: WithLabel> Yolo26<
               items.push(DetectItem {
                 kind: T::from_label_id(class_id),
                 score: score_value,
-                bbox: [
-                  xmin / W as f32,
-                  ymin / H as f32,
-                  xmax / W as f32,
-                  ymax / H as f32,
-                ],
+                bbox: [xmin, ymin, xmax, ymax],
               });
             }
           }
