@@ -37,6 +37,11 @@ pub struct Args {
   pub output: Url,
 }
 
+#[cfg(not(feature = "cubecl-wgpu"))]
+type Runtime = shanan_cv::cubecl::cpu::CpuRuntime;
+#[cfg(feature = "cubecl-wgpu")]
+type Runtime = shanan_cv::cubecl::wgpu::WgpuRuntime;
+
 fn main() -> Result<()> {
   tracing_subscriber::fmt::init();
 
@@ -47,7 +52,8 @@ fn main() -> Result<()> {
   info!("输出路径: {}", args.output);
 
   let input_image = shanan::input::InputWrapper::from_url(&args.input)?;
-  let model: DetectionNhwc<640, 640, CocoLabel> = shanan::model::Detection::from_url(&args.model)?;
+  let model: DetectionNhwc<640, 640, CocoLabel, Runtime> =
+    shanan::model::Detection::from_url(&args.model)?;
   let output = shanan::output::OutputWrapper::from_url(&args.output)?;
 
   RepeatShotTask.run_task(input_image.into_nhwc(), model, output)?;

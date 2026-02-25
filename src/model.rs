@@ -11,6 +11,7 @@
 //
 // Copyright (C) 2026 Johann Li <me@qinka.pro>, Wareless Group
 
+use shanan_cv::cubecl::Runtime;
 use shanan_macro::toml_label;
 use thiserror::Error;
 use url::Url;
@@ -27,11 +28,19 @@ pub trait Model {
   fn postprocess(&self, output: rknpu::Output) -> Result<Self::Output, Self::Error>;
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct BBox {
+  pub x_min: f32,
+  pub y_min: f32,
+  pub x_max: f32,
+  pub y_max: f32,
+}
+
 #[derive(Debug, Clone)]
 pub struct DetectItem<T> {
   pub kind: T,
   pub score: f32,
-  pub bbox: [f32; 4], // [x_min, y_min, x_max, y_max]
+  pub bbox: BBox,
 }
 
 #[derive(Debug, Clone)]
@@ -61,8 +70,8 @@ mod yolo26;
 #[cfg(feature = "model_yolo26")]
 pub use self::yolo26::{Yolo26, Yolo26Builder, Yolo26Nhwc};
 
-pub type DetectionNhwc<const W: u32, const H: u32, T> =
-  Detection<W, H, crate::frame::RgbNhwcFrame<H, W>, T>;
+pub type DetectionNhwc<const W: u32, const H: u32, T, R> =
+  Detection<W, H, crate::frame::RgbNhwcFrame<H, W>, T, R>;
 
 #[derive(Error, Debug)]
 pub enum DetectionError {
@@ -71,12 +80,12 @@ pub enum DetectionError {
   Yolo26Error(#[from] yolo26::Yolo26Error),
 }
 
-pub enum Detection<const W: u32, const H: u32, F, T> {
+pub enum Detection<const W: u32, const H: u32, F, T, R: Runtime> {
   #[cfg(feature = "model_yolo26")]
-  Yolo26(Yolo26<W, H, F, T>),
+  Yolo26(Yolo26<W, H, F, T, R>),
 }
 
-impl<const W: u32, const H: u32, F, T> FromUrl for Detection<W, H, F, T> {
+impl<const W: u32, const H: u32, F, T, R: Runtime> FromUrl for Detection<W, H, F, T, R> {
   type Error = DetectionError;
 
   fn from_url(url: &Url) -> Result<Self, Self::Error> {
@@ -93,8 +102,8 @@ impl<const W: u32, const H: u32, F, T> FromUrl for Detection<W, H, F, T> {
   }
 }
 
-impl<const W: u32, const H: u32, Frame: AsNhwcFrame<H, W>, T: WithLabel> Model
-  for Detection<W, H, Frame, T>
+impl<const W: u32, const H: u32, Frame: AsNhwcFrame<H, W>, T: WithLabel, R: Runtime> Model
+  for Detection<W, H, Frame, T, R>
 {
   type Input = Frame;
   type Output = DetectResult<T>;

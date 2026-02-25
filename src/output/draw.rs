@@ -18,7 +18,7 @@ use imageproc::drawing::{draw_filled_rect_mut, draw_text_mut};
 use crate::{
   frame::{RgbNchwFrame, RgbNhwcFrame},
   input::{AsNchwFrame, AsNhwcFrame},
-  model::{DetectItem, DetectResult, WithLabel},
+  model::{BBox, DetectItem, DetectResult, WithLabel},
 };
 
 // 文本渲染常量
@@ -58,24 +58,25 @@ impl<'a> Draw<'a> {
   fn draw_bbox_with_label<T: WithLabel>(
     &self,
     image: &mut RgbImage,
-    bbox: &[f32; 4],
+    bbox: &BBox,
     kind: &T,
     score: f32,
     color: [u8; 3],
     font: &FontRef,
   ) {
     let (w, h) = (image.width() as f32, image.height() as f32);
-
-    let mut x_min = (bbox[0] * w).floor() as i32;
-    let mut y_min = (bbox[1] * h).floor() as i32;
-    let mut x_max = (bbox[2] * w).ceil() as i32;
-    let mut y_max = (bbox[3] * h).ceil() as i32;
+    let BBox {
+      x_min,
+      y_min,
+      x_max,
+      y_max,
+    } = *bbox;
 
     // Clamp to image bounds
-    x_min = x_min.clamp(0, w as i32 - 1);
-    y_min = y_min.clamp(0, h as i32 - 1);
-    x_max = x_max.clamp(0, w as i32 - 1);
-    y_max = y_max.clamp(0, h as i32 - 1);
+    let x_min = (x_min as i32).clamp(0, w as i32 - 1);
+    let y_min = (y_min as i32).clamp(0, h as i32 - 1);
+    let x_max = (x_max as i32).clamp(0, w as i32 - 1);
+    let y_max = (y_max as i32).clamp(0, h as i32 - 1);
 
     if x_min >= x_max || y_min >= y_max {
       return;
@@ -297,7 +298,7 @@ impl Record {
       };
       let record = format!(
         "{}, {:.4}, {:.4}, {:.4}, {:.4}, {:.4}",
-        name, item.score, item.bbox[0], item.bbox[1], item.bbox[2], item.bbox[3]
+        name, item.score, item.bbox.x_min, item.bbox.y_min, item.bbox.x_max, item.bbox.y_max
       );
       records.push(record);
     }

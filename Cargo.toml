@@ -36,9 +36,9 @@ v4l = "0.14"
 image = { version = "0.25", features = ["png", "jpeg"], optional = true }
 imageproc = { version = "0.26", optional = true }
 ab_glyph = { version = "0.2", optional = true }
-gstreamer = { version = "0.24", optional = true }
-gstreamer-app = { version = "0.24", optional = true }
-gstreamer-video = { version = "0.24", optional = true }
+gstreamer = { version = "0.25", optional = true }
+gstreamer-app = { version = "0.25", optional = true }
+gstreamer-video = { version = "0.25", optional = true }
 tracing = "0.1"
 tracing-subscriber = "0.3"
 thiserror = "2.0"
