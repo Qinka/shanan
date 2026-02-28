@@ -12,4 +12,4 @@
 // Copyright (C) 2026 Johann Li <me@qinka.pro>, Wareless Group
 
 mod benchmark;
-pub use benchmark::DetectionBenchmarker;
+pub use benchmark::{DetectionBenchmarker, DetectionTimeRecord};

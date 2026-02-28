@@ -11,7 +11,10 @@
 //
 // Copyright (C) 2026 Johann Li <me@qinka.pro>, Wareless Group
 
-use std::time::Duration;
+use std::{
+  ops::{Add, Div},
+  time::Duration,
+};
 
 #[derive(Debug, Clone)]
 pub struct DetectionTimeRecord {
@@ -19,6 +22,32 @@ pub struct DetectionTimeRecord {
   pub inference: Duration,
   pub postprocess: Duration,
   pub render: Duration,
+}
+
+impl Add for DetectionTimeRecord {
+  type Output = Self;
+
+  fn add(self, other: Self) -> Self {
+    Self {
+      data_load: self.data_load + other.data_load,
+      inference: self.inference + other.inference,
+      postprocess: self.postprocess + other.postprocess,
+      render: self.render + other.render,
+    }
+  }
+}
+
+impl Div<u32> for DetectionTimeRecord {
+  type Output = Self;
+
+  fn div(self, rhs: u32) -> Self {
+    Self {
+      data_load: self.data_load / rhs,
+      inference: self.inference / rhs,
+      postprocess: self.postprocess / rhs,
+      render: self.render / rhs,
+    }
+  }
 }
 
 pub struct DetectionBenchmarker {
@@ -85,38 +114,33 @@ impl DetectionBenchmarker {
     }
   }
 
-  pub fn report(&self) {
-    let total_records = self.records.len() as f64;
-    let avg_data_load = self
+  pub fn report(&self) -> DetectionTimeRecord {
+    let total_records = self.records.len() as u32;
+    let records_average = self
       .records
-      .iter()
-      .map(|r| r.data_load.as_secs_f64() * 1000.0)
-      .sum::<f64>()
-      / total_records;
-    let avg_inference = self
-      .records
-      .iter()
-      .map(|r| r.inference.as_secs_f64() * 1000.0)
-      .sum::<f64>()
-      / total_records;
-    let avg_postprocess = self
-      .records
-      .iter()
-      .map(|r| r.postprocess.as_secs_f64() * 1000.0)
-      .sum::<f64>()
-      / total_records;
-    let avg_render = self
-      .records
-      .iter()
-      .map(|r| r.render.as_secs_f64() * 1000.0)
-      .sum::<f64>()
+      .clone()
+      .into_iter()
+      .reduce(DetectionTimeRecord::add)
+      .unwrap()
       / total_records;
 
-    tracing::info!("{:?} records processed", self.records);
+    println!(
+      "Average Data Load Time: {:.2}ms",
+      records_average.data_load.as_secs_f64() * 1000.0
+    );
+    println!(
+      "Average Inference Time: {:.2}ms",
+      records_average.inference.as_secs_f64() * 1000.0
+    );
+    println!(
+      "Average Postprocess Time: {:.2}ms",
+      records_average.postprocess.as_secs_f64() * 1000.0
+    );
+    println!(
+      "Average Render Time: {:.2}ms",
+      records_average.render.as_secs_f64() * 1000.0
+    );
 
-    println!("Average Data Load Time: {:.2}ms", avg_data_load);
-    println!("Average Inference Time: {:.2}ms", avg_inference);
-    println!("Average Postprocess Time: {:.2}ms", avg_postprocess);
-    println!("Average Render Time: {:.2}ms", avg_render);
+    records_average
   }
 }

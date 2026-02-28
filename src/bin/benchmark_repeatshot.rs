@@ -39,6 +39,9 @@ pub struct Args {
   /// 基准测试重复次数
   #[arg(long, value_name = "TIMES", default_value_t = 1000)]
   pub times: u32,
+  /// benchmark 结果输出格式
+  #[arg(long, value_name = "FORMAT", default_value = "plain")]
+  pub format: String,
 }
 
 #[cfg(not(feature = "cubecl-wgpu"))]
@@ -61,12 +64,30 @@ fn main() -> Result<()> {
     shanan::model::DetectionPostprocess::from_url(&args.model)?;
   let output = shanan::output::OutputWrapper::from_url(&args.output)?;
 
-  BenchmarkTask::default().with_times(args.times).run_task(
+  let record = BenchmarkTask::default().with_times(args.times).run_task(
     input_image.into_nhwc(),
     model,
     postprocess,
     output,
   )?;
+
+  println!("Benchmark completed. Average times:");
+  println!(
+    "Average Data Load Time: {:.2}ms",
+    record.data_load.as_secs_f64() * 1000.0
+  );
+  println!(
+    "Average Inference Time: {:.2}ms",
+    record.inference.as_secs_f64() * 1000.0
+  );
+  println!(
+    "Average Postprocess Time: {:.2}ms",
+    record.postprocess.as_secs_f64() * 1000.0
+  );
+  println!(
+    "Average Render Time: {:.2}ms",
+    record.render.as_secs_f64() * 1000.0
+  );
 
   Ok(())
 }
