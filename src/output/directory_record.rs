@@ -21,12 +21,13 @@ use crate::output::draw::ToRgbImage;
 use crate::{
   FromUrl, FromUrlWithScheme,
   frame::{RgbNchwFrame, RgbNhwcFrame},
-  model::{DetectResult, WithLabel},
+  model::DetectResult,
   output::{
     Render,
     draw::{Draw, DrawDetectionOnFrame, Record},
   },
 };
+use shanan_trait::WithLabel;
 
 #[derive(Error, Debug)]
 pub enum DirectoryRecordOutputError {

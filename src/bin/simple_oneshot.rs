@@ -18,8 +18,9 @@ use url::Url;
 use shanan::{
   FromUrl,
   model::{CocoLabel, DetectionNhwc},
-  task::{OneShotTask, Task},
+  task::OneShotTask,
 };
+use shanan_trait::Task;
 use tracing::info;
 
 #[cfg(not(feature = "cubecl-wgpu"))]
@@ -52,11 +53,12 @@ fn main() -> Result<()> {
   info!("输出路径: {}", args.output);
 
   let input_image = shanan::input::InputWrapper::from_url(&args.input)?;
-  let model: DetectionNhwc<640, 640, CocoLabel, Runtime> =
-    shanan::model::Detection::from_url(&args.model)?;
+  let model: DetectionNhwc<640, 640> = shanan::model::Detection::from_url(&args.model)?;
+  let postprocess: shanan::model::DetectionPostprocess<640, 640, CocoLabel, Runtime> =
+    shanan::model::DetectionPostprocess::from_url(&args.model)?;
   let output = shanan::output::OutputWrapper::from_url(&args.output)?;
 
-  OneShotTask.run_task(input_image.into_nhwc(), model, output)?;
+  OneShotTask.run_task(input_image.into_nhwc(), model, postprocess, output)?;
 
   Ok(())
 }

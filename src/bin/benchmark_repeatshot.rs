@@ -1,5 +1,5 @@
 // 该文件是 Shanan （山南西风） 项目的一部分。
-// src/bin/simple_camera.rs - 简单的图像推理代码
+// src/bin/benchmark_repeatshot.rs - 用于测试代码的基准测试任务
 //
 // 本文件根据 Apache 许可证第 2.0 版（以下简称“许可证”）授权使用；
 // 除非遵守该许可证条款，否则您不得使用本文件。
@@ -18,7 +18,7 @@ use url::Url;
 use shanan::{
   FromUrl,
   model::{CocoLabel, DetectionNhwc},
-  task::ContinuousTask,
+  task::BenchmarkTask,
 };
 use shanan_trait::Task;
 use tracing::info;
@@ -36,9 +36,9 @@ pub struct Args {
   /// 输出路径
   #[arg(long, value_name = "OUTPUT")]
   pub output: Url,
-
-  #[arg(long, value_name = "FRAME_NUMBER")]
-  pub frame_number: Option<usize>,
+  /// 基准测试重复次数
+  #[arg(long, value_name = "TIMES", default_value_t = 1000)]
+  pub times: u32,
 }
 
 #[cfg(not(feature = "cubecl-wgpu"))]
@@ -61,9 +61,12 @@ fn main() -> Result<()> {
     shanan::model::DetectionPostprocess::from_url(&args.model)?;
   let output = shanan::output::OutputWrapper::from_url(&args.output)?;
 
-  ContinuousTask::default()
-    .with_frame_number(args.frame_number)
-    .run_task(input_image.into_nhwc(), model, postprocess, output)?;
+  BenchmarkTask::default().with_times(args.times).run_task(
+    input_image.into_nhwc(),
+    model,
+    postprocess,
+    output,
+  )?;
 
   Ok(())
 }

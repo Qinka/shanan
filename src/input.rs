@@ -50,6 +50,7 @@ pub enum InputError {
   SchemeMismatch,
 }
 
+#[derive(Debug, Clone)]
 pub enum InputWrapper<const W: u32, const H: u32> {
   #[cfg(feature = "gstreamer_input")]
   GStreamerInput(GStreamerInput<W, H>),
@@ -107,6 +108,7 @@ impl<const W: u32, const H: u32> InputWrapper<W, H> {
   }
 }
 
+#[derive(Debug, Clone)]
 pub enum InputWrapperNhwcIter<const W: u32, const H: u32> {
   #[cfg(feature = "gstreamer_input")]
   GStreamerInput(self::gstreamer_input::GStreamerInputNhwc<W, H>),
@@ -127,6 +129,7 @@ impl<const W: u32, const H: u32> Iterator for InputWrapperNhwcIter<W, H> {
   }
 }
 
+#[derive(Debug, Clone)]
 pub enum InputWrapperNchwIter<const W: u32, const H: u32> {
   #[cfg(feature = "gstreamer_input")]
   GStreamerInput(self::gstreamer_input::GStreamerInputNchw<W, H>),

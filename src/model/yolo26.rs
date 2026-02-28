@@ -16,6 +16,7 @@ use rknpu::{Context, InitFlags, TensorType};
 use shanan_cv::cubecl::Runtime;
 use shanan_cv::cubecl::client::ComputeClient;
 use shanan_cv::data::DataBuffer;
+use shanan_trait::Postprocess;
 use thiserror::Error;
 use tracing::{debug, error, info};
 use url::Url;
@@ -30,8 +31,6 @@ use crate::{
 
 const YOLO26_NUM_INPUTS: u32 = 1;
 const YOLO26_NUM_OUTPUTS: u32 = 3;
-// const YOLO26_HEAD_SIZES: [(usize, usize); 3] = [(80, 80), (40, 40), (20, 20)];
-// const YOLO26_STRIDES: [u32; 3] = [8, 16, 32];
 const YOLO26_OBJECT_THRESH: f32 = 0.5;
 
 #[cfg(not(feature = "cubecl-wgpu"))]
@@ -39,28 +38,18 @@ const SCV_P_DIM: u32 = 1;
 #[cfg(feature = "cubecl-wgpu")]
 const SCV_P_DIM: u32 = 256;
 
-// const fn head_len<const N: usize>(width: u32, height: u32, strides: [u32; N]) -> usize {
-//   let mut total = 0;
-//   let mut i = 0;
-//   while i < N {
-//     let s = strides[i];
-//     let map_w = width / s;
-//     let map_h = height / s;
-//     total += (map_w as usize) * (map_h as usize);
-//     i += 1;
-//   }
-//   total
-// }
+pub type Yolo26Nhwc<const W: u32, const H: u32> = Yolo26<W, H, crate::frame::RgbNhwcFrame<H, W>>;
 
-pub type Yolo26Nhwc<const W: u32, const H: u32, T, R> =
-  Yolo26<W, H, crate::frame::RgbNhwcFrame<H, W>, T, R>;
-
-pub struct Yolo26<const W: u32, const H: u32, Frame, T, R: Runtime> {
+pub struct Yolo26<const W: u32, const H: u32, Frame> {
   context: Context,
+  _phantom: std::marker::PhantomData<Frame>,
+}
+
+pub struct Yolo26Postprocess<const W: u32, const H: u32, T, R: Runtime> {
   object_thresh: f32,
   postprocess: shanan_cv::postprocess::detection::Yolo26Bc<R, f32, u32>,
   cl_client: ComputeClient<R>,
-  _phantom: std::marker::PhantomData<(Frame, T)>,
+  _phantom: std::marker::PhantomData<T>,
 }
 
 #[derive(Error, Debug)]
@@ -89,7 +78,7 @@ pub struct Yolo26Builder {
   model_path: String,
   flags: InitFlags,
   object_thresh: f32,
-  ppconfig: shanan_cv::postprocess::detection::Yolo26BcConfig,
+  pdim: u32,
 }
 
 impl FromUrlWithScheme for Yolo26Builder {
@@ -129,13 +118,11 @@ impl FromUrl for Yolo26Builder {
       })
       .unwrap_or(SCV_P_DIM);
 
-    let ppconfig = shanan_cv::postprocess::detection::Yolo26BcConfig::default().with_dim(pdim);
-
     Ok(Yolo26Builder {
       model_path: url.path().to_string(),
       flags: InitFlags::default(),
       object_thresh,
-      ppconfig,
+      pdim,
     })
   }
 }
@@ -146,9 +133,15 @@ impl Yolo26Builder {
     self
   }
 
-  pub fn build<const W: u32, const H: u32, Frame, T, R: Runtime>(
+  pub fn build_postprocess<const W: u32, const H: u32, T: WithLabel, R: Runtime>(
+    &self,
+  ) -> Result<Yolo26Postprocess<W, H, T, R>, Yolo26Error> {
+    Yolo26Postprocess::new(self.object_thresh, self.pdim)
+  }
+
+  pub fn build_model<const W: u32, const H: u32, Frame>(
     self,
-  ) -> Result<Yolo26<W, H, Frame, T, R>, Yolo26Error> {
+  ) -> Result<Yolo26<W, H, Frame>, Yolo26Error> {
     info!("加载模型文件: {}", self.model_path);
     let mode_data = std::fs::read(&self.model_path)?;
     debug!(
@@ -213,27 +206,15 @@ impl Yolo26Builder {
     debug!("模型输入数量: {}", num_inputs);
     debug!("模型输出数量: {}", num_outputs);
 
-    let postprocess = self.ppconfig.with_shape(W, H).build()?;
-
-    let cl_client = R::client(&R::Device::default());
-
-    let _phantom = std::marker::PhantomData::<(Frame, T)>;
-    Ok(Yolo26 {
-      context,
-      object_thresh: self.object_thresh,
-      postprocess,
-      cl_client,
-      _phantom,
-    })
+    let _phantom = std::marker::PhantomData;
+    Ok(Yolo26 { context, _phantom })
   }
 }
 
-impl<const W: u32, const H: u32, Frame: AsNhwcFrame<H, W>, T: WithLabel, R: Runtime> Model
-  for Yolo26<W, H, Frame, T, R>
-{
+impl<const W: u32, const H: u32, Frame: AsNhwcFrame<H, W>> Model for Yolo26<W, H, Frame> {
   // type Input = RgbNchwFrame; // 输入为 NCHW 格式的字节数组
   type Input = Frame;
-  type Output = DetectResult<T>; // 输出为浮点数组
+  type Output = rknpu::Output; // 输出为浮点数组
   type Error = Yolo26Error;
 
   fn infer(&self, input: &Self::Input) -> Result<Self::Output, Self::Error> {
@@ -256,10 +237,37 @@ impl<const W: u32, const H: u32, Frame: AsNhwcFrame<H, W>, T: WithLabel, R: Runt
     let output = self.context.get_outputs()?;
     debug!("模型推理结果：{:?}", output);
 
-    self.postprocess(output)
+    Ok(output)
   }
+}
 
-  fn postprocess(&self, output: rknpu::Output) -> Result<Self::Output, Self::Error> {
+impl<const W: u32, const H: u32, T: WithLabel, R: Runtime> Yolo26Postprocess<W, H, T, R> {
+  pub fn new(object_thresh: f32, p: u32) -> Result<Self, Yolo26Error> {
+    let ppconfig = shanan_cv::postprocess::detection::Yolo26BcConfig::default()
+      .with_shape(W, H)
+      .with_dim(p);
+
+    let postprocess = ppconfig.build()?;
+
+    let cl_client = R::client(&R::Device::default());
+
+    Ok(Self {
+      object_thresh,
+      postprocess,
+      cl_client,
+      _phantom: std::marker::PhantomData,
+    })
+  }
+}
+
+impl<const W: u32, const H: u32, T: WithLabel, R: Runtime> Postprocess
+  for Yolo26Postprocess<W, H, T, R>
+{
+  type Input = rknpu::Output; // 输出为浮点数组
+  type Output = DetectResult<T>;
+  type Error = Yolo26Error;
+
+  fn process(&self, output: Self::Input) -> Result<Self::Output, Self::Error> {
     // 调试性输出结果
     debug!("后处理模型输出");
     let mut items = Vec::new();

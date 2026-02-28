@@ -20,12 +20,13 @@ use url::Url;
 use crate::{
   FromUrl, FromUrlWithScheme,
   frame::{RgbNchwFrame, RgbNhwcFrame},
-  model::{DetectResult, WithLabel},
+  model::DetectResult,
   output::{
     Render,
     draw::{Draw, DrawDetectionOnFrame},
   },
 };
+use shanan_trait::WithLabel;
 
 pub struct SaveImageFileOutput<'a, const W: u32, const H: u32> {
   path: String,

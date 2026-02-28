@@ -31,6 +31,7 @@ pub enum ImageFileInputError {
   ImageLoadError(#[from] image::ImageError),
 }
 
+#[derive(Debug, Clone)]
 pub struct ImageFileInput<const W: u32, const H: u32> {
   image: Option<RgbImage>,
 }
@@ -71,6 +72,7 @@ impl<const W: u32, const H: u32> ImageFileInput<W, H> {
   }
 }
 
+#[derive(Debug, Clone)]
 pub struct ImageFileInputNchw<const W: u32, const H: u32> {
   inner: ImageFileInput<W, H>,
 }
@@ -111,6 +113,7 @@ impl<const W: u32, const H: u32> From<RgbImage> for RgbNchwFrame<W, H> {
   }
 }
 
+#[derive(Debug, Clone)]
 pub struct ImageFileInputNhwc<const W: u32, const H: u32> {
   inner: ImageFileInput<W, H>,
 }

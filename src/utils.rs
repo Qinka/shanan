@@ -11,6 +11,5 @@
 //
 // Copyright (C) 2026 Johann Li <me@qinka.pro>, Wareless Group
 
-pub fn sigmoid(x: f32) -> f32 {
-  1.0 / (1.0 + (-x).exp())
-}
+mod benchmark;
+pub use benchmark::DetectionBenchmarker;

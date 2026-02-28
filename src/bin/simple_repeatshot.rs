@@ -18,8 +18,9 @@ use url::Url;
 use shanan::{
   FromUrl,
   model::{CocoLabel, DetectionNhwc},
-  task::{RepeatShotTask, Task},
+  task::RepeatShotTask,
 };
+use shanan_trait::Task;
 use tracing::info;
 
 /// Shanan 项目参数配置
@@ -52,11 +53,12 @@ fn main() -> Result<()> {
   info!("输出路径: {}", args.output);
 
   let input_image = shanan::input::InputWrapper::from_url(&args.input)?;
-  let model: DetectionNhwc<640, 640, CocoLabel, Runtime> =
-    shanan::model::Detection::from_url(&args.model)?;
+  let model: DetectionNhwc<640, 640> = shanan::model::Detection::from_url(&args.model)?;
+  let postprocess: shanan::model::DetectionPostprocess<640, 640, CocoLabel, Runtime> =
+    shanan::model::DetectionPostprocess::from_url(&args.model)?;
   let output = shanan::output::OutputWrapper::from_url(&args.output)?;
 
-  RepeatShotTask.run_task(input_image.into_nhwc(), model, output)?;
+  RepeatShotTask.run_task(input_image.into_nhwc(), model, postprocess, output)?;
 
   Ok(())
 }

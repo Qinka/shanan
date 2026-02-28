@@ -15,14 +15,10 @@ use crate::FromUrl;
 #[cfg(feature = "save_image_file")]
 use crate::FromUrlWithScheme;
 use crate::frame::{RgbNchwFrame, RgbNhwcFrame};
-use crate::model::{DetectResult, WithLabel};
+use crate::model::DetectResult;
+use shanan_trait::{Render, WithLabel};
 use thiserror::Error;
 use url::Url;
-
-pub trait Render<Frame, Output>: Sized {
-  type Error;
-  fn render_result(&self, frame: &Frame, result: &Output) -> Result<(), Self::Error>;
-}
 
 pub mod draw;
 

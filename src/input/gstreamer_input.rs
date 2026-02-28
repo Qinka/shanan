@@ -423,6 +423,7 @@ impl<const W: u32, const H: u32> FromUrl for GStreamerInputPipelineBuilder<W, H>
 /// # Ok(())
 /// # }
 /// ```
+#[derive(Debug, Clone)]
 pub struct GStreamerInput<const W: u32, const H: u32> {
   pipeline: gst::Pipeline,
   appsink: gst_app::AppSink,
@@ -464,6 +465,7 @@ impl<const W: u32, const H: u32> GStreamerInput<W, H> {
 /// GStreamer 输入的 NCHW 格式迭代器
 ///
 /// 将视频帧转换为 NCHW 格式（Channels × Height × Width）。
+#[derive(Debug, Clone)]
 pub struct GStreamerInputNchw<const W: u32, const H: u32> {
   inner: GStreamerInput<W, H>,
 }
@@ -485,6 +487,7 @@ impl<const W: u32, const H: u32> Iterator for GStreamerInputNchw<W, H> {
 /// GStreamer 输入的 NHWC 格式迭代器
 ///
 /// 将视频帧转换为 NHWC 格式（Height × Width × Channels）。
+#[derive(Debug, Clone)]
 pub struct GStreamerInputNhwc<const W: u32, const H: u32> {
   inner: GStreamerInput<W, H>,
 }

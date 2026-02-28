@@ -18,8 +18,9 @@ use imageproc::drawing::{draw_filled_rect_mut, draw_text_mut};
 use crate::{
   frame::{RgbNchwFrame, RgbNhwcFrame},
   input::{AsNchwFrame, AsNhwcFrame},
-  model::{BBox, DetectItem, DetectResult, WithLabel},
+  model::{BBox, DetectItem, DetectResult},
 };
+use shanan_trait::WithLabel;
 
 // 文本渲染常量
 const LABEL_FONT_SIZE: f32 = 20.0;

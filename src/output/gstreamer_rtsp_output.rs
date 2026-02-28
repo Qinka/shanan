@@ -95,12 +95,13 @@ use crate::{
   FromUrl, FromUrlWithScheme,
   frame::{RgbNchwFrame, RgbNhwcFrame},
   input::AsNhwcFrame,
-  model::{DetectResult, WithLabel},
+  model::DetectResult,
   output::{
     Render,
     draw::{Draw, DrawDetectionOnFrame},
   },
 };
+use shanan_trait::WithLabel;
 
 use gstreamer::{self as gst, prelude::*};
 use gstreamer_app as gst_app;
