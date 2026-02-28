@@ -29,9 +29,10 @@ where
   PE: std::error::Error + Sync + Send + 'static,
   RE: std::error::Error + Sync + Send + 'static,
 {
+  type Output = ();
   type Error = anyhow::Error;
 
-  fn run_task(self, mut input: I, model: M, post: P, render: R) -> Result<(), Self::Error> {
+  fn run_task(self, mut input: I, model: M, post: P, render: R) -> Result<Self::Output, Self::Error> {
     info!("开始任务...");
     let frame = input.next().ok_or_else(|| anyhow::anyhow!("没有输入帧"))?;
     info!("输入帧获取成功，开始推理...");
@@ -58,9 +59,11 @@ where
   PE: std::error::Error + Sync + Send + 'static,
   RE: std::error::Error + Sync + Send + 'static,
 {
+
+  type Output = ();
   type Error = anyhow::Error;
 
-  fn run_task(self, mut input: I, model: M, post: P, render: R) -> Result<(), Self::Error> {
+  fn run_task(self, mut input: I, model: M, post: P, render: R) -> Result<Self::Output, Self::Error> {
     const REPEAT_TIMES: usize = 1000;
 
     info!("开始任务...");
@@ -109,9 +112,10 @@ where
   PE: std::error::Error + Sync + Send + 'static,
   RE: std::error::Error + Sync + Send + 'static,
 {
+  type Output = ();
   type Error = anyhow::Error;
 
-  fn run_task(self, input: I, model: M, post: P, render: R) -> Result<(), Self::Error> {
+  fn run_task(self, input: I, model: M, post: P, render: R) -> Result<Self::Output, Self::Error> {
     info!("开始任务...");
     let (tx, rx) = std::sync::mpsc::channel();
 
@@ -216,9 +220,10 @@ where
   PE: std::error::Error + Sync + Send + 'static,
   RE: std::error::Error + Sync + Send + 'static,
 {
+  type Output = ();
   type Error = anyhow::Error;
 
-  fn run_task(mut self, input: I, model: M, post: P, render: R) -> Result<(), Self::Error> {
+  fn run_task(mut self, input: I, model: M, post: P, render: R) -> Result<Self::Output, Self::Error> {
     let mut input = input.cycle();
     info!("开始基准测试任务...");
 
