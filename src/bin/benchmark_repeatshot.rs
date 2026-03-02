@@ -11,8 +11,11 @@
 //
 // Copyright (C) 2026 Johann Li <me@qinka.pro>, Wareless Group
 
+use std::path::PathBuf;
+
 use anyhow::Result;
 use clap::Parser;
+use serde_json::json;
 use url::Url;
 
 use shanan::{
@@ -40,14 +43,15 @@ pub struct Args {
   #[arg(long, value_name = "TIMES", default_value_t = 1000)]
   pub times: u32,
   /// benchmark 结果输出格式
-  #[arg(long, value_name = "FORMAT", default_value = "plain")]
-  pub format: String,
+  #[arg(long, value_name = "RESULT")]
+  pub save: Option<PathBuf>,
 }
 
 #[cfg(not(feature = "cubecl-wgpu"))]
 type Runtime = shanan_cv::cubecl::cpu::CpuRuntime;
 #[cfg(feature = "cubecl-wgpu")]
 type Runtime = shanan_cv::cubecl::wgpu::WgpuRuntime;
+
 
 fn main() -> Result<()> {
   tracing_subscriber::fmt::init();
@@ -71,23 +75,16 @@ fn main() -> Result<()> {
     output,
   )?;
 
-  println!("Benchmark completed. Average times:");
-  println!(
-    "Average Data Load Time: {:.2}ms",
-    record.data_load.as_secs_f64() * 1000.0
-  );
-  println!(
-    "Average Inference Time: {:.2}ms",
-    record.inference.as_secs_f64() * 1000.0
-  );
-  println!(
-    "Average Postprocess Time: {:.2}ms",
-    record.postprocess.as_secs_f64() * 1000.0
-  );
-  println!(
-    "Average Render Time: {:.2}ms",
-    record.render.as_secs_f64() * 1000.0
-  );
+  if let Some(save_path) = args.save {
+    let data = json!({
+      "data_load": record.data_load.as_secs_f64() * 1000.0,
+      "inference": record.inference.as_secs_f64() * 1000.0,
+      "postprocess": record.postprocess.as_secs_f64() * 1000.0,
+      "render": record.render.as_secs_f64() * 1000.0,
+    });
+    std::fs::write(save_path, data.to_string())?;
+  }
+
 
   Ok(())
 }

@@ -21,15 +21,15 @@ pub trait AsNhwcFrame<const W: u32, const H: u32> {
   fn as_nhwc(&self) -> &[u8];
 }
 
-#[cfg(feature = "read_image_file")]
-mod read_image_file;
 use crate::{
   FromUrl,
   frame::{RgbNchwFrame, RgbNhwcFrame},
 };
 
 #[cfg(feature = "read_image_file")]
-pub use self::read_image_file::{ImageFileInput, ImageFileInputError};
+mod read_image_file;
+#[cfg(feature = "read_image_file")]
+pub use self::read_image_file::{ImageFileInput, ImageFileInputError, ReadImageFolderInput};
 
 #[cfg(feature = "gstreamer_input")]
 mod gstreamer_input;
@@ -56,6 +56,8 @@ pub enum InputWrapper<const W: u32, const H: u32> {
   GStreamerInput(GStreamerInput<W, H>),
   #[cfg(feature = "read_image_file")]
   ReadImageFile(ImageFileInput<W, H>),
+  #[cfg(feature = "read_image_file")]
+  ReadImageFolder(ReadImageFolderInput<W, H>),
 }
 
 impl<const W: u32, const H: u32> FromUrl for InputWrapper<W, H> {
@@ -80,6 +82,15 @@ impl<const W: u32, const H: u32> FromUrl for InputWrapper<W, H> {
         return Ok(InputWrapper::ReadImageFile(input));
       }
     }
+    #[cfg(feature = "read_image_file")]
+    {
+      use crate::FromUrlWithScheme;
+
+      if url.scheme() == ReadImageFolderInput::<W, H>::SCHEME {
+        let input = ReadImageFolderInput::from_url(url)?;
+        return Ok(InputWrapper::ReadImageFolder(input));
+      }
+    }
     Err(InputError::SchemeMismatch)
   }
 }
@@ -93,6 +104,10 @@ impl<const W: u32, const H: u32> InputWrapper<W, H> {
       }
       #[cfg(feature = "read_image_file")]
       InputWrapper::ReadImageFile(input) => InputWrapperNhwcIter::ReadImageFile(input.into_nhwc()),
+      #[cfg(feature = "read_image_file")]
+      InputWrapper::ReadImageFolder(input) => {
+        InputWrapperNhwcIter::ReadImageFolder(input)
+      }
     }
   }
 
@@ -104,6 +119,10 @@ impl<const W: u32, const H: u32> InputWrapper<W, H> {
       }
       #[cfg(feature = "read_image_file")]
       InputWrapper::ReadImageFile(input) => InputWrapperNchwIter::ReadImageFile(input.into_nchw()),
+      #[cfg(feature = "read_image_file")]
+      InputWrapper::ReadImageFolder(_) => {
+        panic!("当前 ReadImageFolderInput 只支持 NHWC 格式。后续可能会变化！")
+      }
     }
   }
 }
@@ -114,6 +133,8 @@ pub enum InputWrapperNhwcIter<const W: u32, const H: u32> {
   GStreamerInput(self::gstreamer_input::GStreamerInputNhwc<W, H>),
   #[cfg(feature = "read_image_file")]
   ReadImageFile(self::read_image_file::ImageFileInputNhwc<W, H>),
+  #[cfg(feature = "read_image_file")]
+  ReadImageFolder(self::read_image_file::ReadImageFolderInput<W, H>),
 }
 
 impl<const W: u32, const H: u32> Iterator for InputWrapperNhwcIter<W, H> {
@@ -125,6 +146,8 @@ impl<const W: u32, const H: u32> Iterator for InputWrapperNhwcIter<W, H> {
       InputWrapperNhwcIter::GStreamerInput(input) => input.next(),
       #[cfg(feature = "read_image_file")]
       InputWrapperNhwcIter::ReadImageFile(input) => input.next(),
+      #[cfg(feature = "read_image_file")]
+      InputWrapperNhwcIter::ReadImageFolder(input) => input.next(),
     }
   }
 }
@@ -145,7 +168,7 @@ impl<const W: u32, const H: u32> Iterator for InputWrapperNchwIter<W, H> {
       #[cfg(feature = "gstreamer_input")]
       InputWrapperNchwIter::GStreamerInput(input) => input.next(),
       #[cfg(feature = "read_image_file")]
-      InputWrapperNchwIter::ReadImageFile(input) => input.next(),
+      InputWrapperNchwIter::ReadImageFile(input) => input.next()
     }
   }
 }

@@ -116,13 +116,21 @@ impl DetectionBenchmarker {
 
   pub fn report(&self) -> DetectionTimeRecord {
     let total_records = self.records.len() as u32;
-    let records_average = self
-      .records
-      .clone()
-      .into_iter()
-      .reduce(DetectionTimeRecord::add)
-      .unwrap()
-      / total_records;
+    let records_average = {
+      let avg = self
+        .records
+        .clone()
+        .into_iter()
+        .reduce(DetectionTimeRecord::add)
+        .unwrap()
+        / total_records;
+      DetectionTimeRecord {
+        data_load: avg.data_load,
+        inference: avg.inference - avg.data_load,
+        postprocess: avg.postprocess - avg.inference,
+        render: avg.render - avg.postprocess,
+      }
+    };
 
     println!(
       "Average Data Load Time: {:.2}ms",

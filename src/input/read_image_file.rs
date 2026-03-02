@@ -18,7 +18,7 @@ use crate::{
 
 use image::{ImageReader, RgbImage};
 use thiserror::Error;
-use tracing::error;
+use tracing::{error, warn};
 use url::Url;
 
 #[derive(Error, Debug)]
@@ -151,5 +151,74 @@ impl<const W: u32, const H: u32> From<RgbImage> for RgbNhwcFrame<W, H> {
       }
     }
     frame
+  }
+}
+
+#[derive(Debug, Clone)]
+pub struct ReadImageFolderInput<const W: u32, const H: u32> {
+  files: Vec<std::path::PathBuf>,
+  index: usize,
+}
+
+
+impl<const W: u32, const H: u32> FromUrlWithScheme for ReadImageFolderInput<W, H> {
+  const SCHEME: &'static str = "folder";
+}
+
+impl<const W: u32, const H: u32> ReadImageFolderInput<W, H> {
+  pub fn new(folder: &std::path::Path) -> Self {
+    warn!("这个从文件夹读取代码的功能是为了进行性能测试开发的。会将指定的路径下所有的文件当作图片进行读取，同时不会检查和修改图片的尺寸，所以请确保输入路径下的图片尺寸是正确的，否则可能会导致后续处理出问题。同时支持持 NHWC 格式，后续可能会有变化！");
+    let mut files = std::fs::read_dir(folder)
+      .unwrap()
+      .filter_map(|entry| {
+        let entry = entry.ok()?;
+        let path = entry.path();
+        if path.is_file() {
+          Some(path)
+        } else {
+          None
+        }
+      })
+      .collect::<Vec<_>>();
+    files.sort();
+    Self { files, index: 0 }
+  }
+}
+
+impl<const W: u32, const H: u32> FromUrl for ReadImageFolderInput<W, H> {
+
+  type Error = ImageFileInputError;
+
+  fn from_url(url: &Url) -> Result<Self, Self::Error> {
+     if url.scheme() != Self::SCHEME {
+      error!(
+        "URI scheme mismatch: expected '{}', found '{}'",
+        Self::SCHEME,
+        url.scheme()
+       );
+      return Err(ImageFileInputError::SchemeMismatch);
+    }
+
+    let path = url.path();
+    let folder = ReadImageFolderInput::new(std::path::Path::new(path));
+
+    Ok(folder)
+  }
+}
+
+impl<const W: u32, const H: u32> Iterator for ReadImageFolderInput<W, H> {
+  type Item = RgbNhwcFrame<W, H>;
+
+  fn next(&mut self) -> Option<Self::Item> {
+    if self.index >= self.files.len() {
+      return None;
+    }
+    let path = &self.files[self.index];
+    self.index += 1;
+
+    let image = ImageReader::open(path).ok()?.decode().ok()?;
+    assert!(image.width() == W && image.height() == H, "图像尺寸不匹配: expected {}x{}, found {}x{}", W, H, image.width(), image.height());
+
+    Some(RgbNhwcFrame::from(image.to_rgb8()))
   }
 }

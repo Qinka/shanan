@@ -290,7 +290,7 @@ impl<const W: u32, const H: u32, T: WithLabel, R: Runtime> Postprocess
         &self.cl_client,
       )?;
 
-      let (score, index, bbox) = self.postprocess.execute(&self.cl_client, &pred)?;
+      let (score, index, bbox) = self.postprocess.execute(&self.cl_client, &pred, self.object_thresh)?;
 
       let bbox = bbox.into_vec(&self.cl_client)?;
       let index = index.into_vec(&self.cl_client)?;
@@ -298,7 +298,7 @@ impl<const W: u32, const H: u32, T: WithLabel, R: Runtime> Postprocess
 
       for s in 0..head_len {
         let score_value = score[s];
-        if score_value >= self.object_thresh {
+        if score_value > self.object_thresh {
           let class_id = index[s];
           let x_min = bbox[s];
           let y_min = bbox[head_len + s];
