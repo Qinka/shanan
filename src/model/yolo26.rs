@@ -85,6 +85,17 @@ impl FromUrlWithScheme for Yolo26Builder {
   const SCHEME: &'static str = "yolo26";
 }
 
+impl Default for Yolo26Builder {
+  fn default() -> Self {
+    Self {
+      model_path: String::new(),
+      flags: InitFlags::default(),
+      object_thresh: YOLO26_OBJECT_THRESH,
+      pdim: SCV_P_DIM,
+    }
+  }
+}
+
 impl FromUrl for Yolo26Builder {
   type Error = Yolo26Error;
 
@@ -130,6 +141,21 @@ impl FromUrl for Yolo26Builder {
 impl Yolo26Builder {
   pub fn flags(mut self, flags: InitFlags) -> Self {
     self.flags = flags;
+    self
+  }
+
+  pub fn model_path(mut self, model_path: String) -> Self {
+    self.model_path = model_path;
+    self
+  }
+
+  pub fn object_thresh(mut self, object_thresh: f32) -> Self {
+    self.object_thresh = object_thresh;
+    self
+  }
+
+  pub fn pdim(mut self, pdim: u32) -> Self {
+    self.pdim = pdim;
     self
   }
 
@@ -290,7 +316,10 @@ impl<const W: u32, const H: u32, T: WithLabel, R: Runtime> Postprocess
         &self.cl_client,
       )?;
 
-      let (score, index, bbox) = self.postprocess.execute(&self.cl_client, &pred, self.object_thresh)?;
+      let (score, index, bbox) =
+        self
+          .postprocess
+          .execute(&self.cl_client, &pred, self.object_thresh)?;
 
       let bbox = bbox.into_vec(&self.cl_client)?;
       let index = index.into_vec(&self.cl_client)?;

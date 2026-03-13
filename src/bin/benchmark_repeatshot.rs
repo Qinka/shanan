@@ -52,7 +52,6 @@ type Runtime = shanan_cv::cubecl::cpu::CpuRuntime;
 #[cfg(feature = "cubecl-wgpu")]
 type Runtime = shanan_cv::cubecl::wgpu::WgpuRuntime;
 
-
 fn main() -> Result<()> {
   tracing_subscriber::fmt::init();
 
@@ -84,7 +83,6 @@ fn main() -> Result<()> {
     });
     std::fs::write(save_path, data.to_string())?;
   }
-
 
   Ok(())
 }

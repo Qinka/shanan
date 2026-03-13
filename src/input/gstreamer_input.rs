@@ -262,6 +262,14 @@ pub struct GStreamerInputPipelineBuilder<const W: u32, const H: u32> {
   items: Vec<GStreamerInputBuilderItem>,
 }
 
+impl<const W: u32, const H: u32> From<Vec<GStreamerInputBuilderItem>>
+  for GStreamerInputPipelineBuilder<W, H>
+{
+  fn from(items: Vec<GStreamerInputBuilderItem>) -> Self {
+    Self { items }
+  }
+}
+
 impl<const W: u32, const H: u32> GStreamerInputPipelineBuilder<W, H> {
   fn build_video_pipline(
     path: &str,
@@ -499,7 +507,7 @@ impl<const W: u32, const H: u32> Iterator for GStreamerInputNhwc<W, H> {
     let sample = self.inner.pull_sample()?;
     convert_sample_to_nhwc(sample)
       .map_err(|e| {
-        error!("Failed to fetch sample: {}", e);
+        error!("Failed to fetch sample x: {}", e);
         e
       })
       .ok()

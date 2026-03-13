@@ -46,14 +46,12 @@ impl<T> DetectResult<T> {
   }
 }
 
-use crate::{FromUrl, input::AsNhwcFrame};
-#[cfg(feature = "model_yolo26")]
-use crate::{FromUrlWithScheme, model::yolo26::Yolo26Postprocess};
+use crate::{FromUrl, FromUrlWithScheme, input::AsNhwcFrame};
 
 #[cfg(feature = "model_yolo26")]
 mod yolo26;
 #[cfg(feature = "model_yolo26")]
-pub use self::yolo26::{Yolo26, Yolo26Builder, Yolo26Nhwc};
+pub use self::yolo26::{Yolo26, Yolo26Builder, Yolo26Error, Yolo26Nhwc, Yolo26Postprocess};
 
 pub type DetectionNhwc<const W: u32, const H: u32> =
   Detection<W, H, crate::frame::RgbNhwcFrame<H, W>>;

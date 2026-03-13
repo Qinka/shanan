@@ -35,7 +35,7 @@ pub use self::read_image_file::{ImageFileInput, ImageFileInputError, ReadImageFo
 mod gstreamer_input;
 #[cfg(feature = "gstreamer_input")]
 pub use self::gstreamer_input::{
-  GStreamerInput, GStreamerInputError, GStreamerInputPipelineBuilder,
+  GStreamerInput, GStreamerInputBuilderItem, GStreamerInputError, GStreamerInputPipelineBuilder,
 };
 
 #[derive(Error, Debug)]
@@ -105,9 +105,7 @@ impl<const W: u32, const H: u32> InputWrapper<W, H> {
       #[cfg(feature = "read_image_file")]
       InputWrapper::ReadImageFile(input) => InputWrapperNhwcIter::ReadImageFile(input.into_nhwc()),
       #[cfg(feature = "read_image_file")]
-      InputWrapper::ReadImageFolder(input) => {
-        InputWrapperNhwcIter::ReadImageFolder(input)
-      }
+      InputWrapper::ReadImageFolder(input) => InputWrapperNhwcIter::ReadImageFolder(input),
     }
   }
 
@@ -168,7 +166,7 @@ impl<const W: u32, const H: u32> Iterator for InputWrapperNchwIter<W, H> {
       #[cfg(feature = "gstreamer_input")]
       InputWrapperNchwIter::GStreamerInput(input) => input.next(),
       #[cfg(feature = "read_image_file")]
-      InputWrapperNchwIter::ReadImageFile(input) => input.next()
+      InputWrapperNchwIter::ReadImageFile(input) => input.next(),
     }
   }
 }
